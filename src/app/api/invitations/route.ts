@@ -20,6 +20,13 @@ type InviteEmailDelivery =
   | { status: "sent" }
   | { status: "pending"; message: string };
 
+type InviteLinkResponse = {
+  action_link?: string;
+  properties?: {
+    action_link?: string;
+  };
+};
+
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get("authorization");
@@ -91,10 +98,22 @@ export async function POST(request: Request) {
       },
       redirectTo,
     );
+    const inviteLink = await generateInviteLink(
+      supabaseUrl,
+      serviceRoleKey,
+      normalizedEmail,
+      {
+        app_name: "HouseDeck",
+        invited_by: profile.full_name || "HouseDeck Admin",
+        role,
+      },
+      redirectTo,
+    );
 
     return NextResponse.json({
       emailDelivery,
       invite: mapInvite(inviteRows[0]),
+      inviteLink,
     });
   } catch (error) {
     return NextResponse.json(
@@ -202,6 +221,36 @@ async function restAdminFetch<T>(
   }
 
   return (await response.json()) as T;
+}
+
+async function generateInviteLink(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  email: string,
+  data?: Record<string, string>,
+  redirectTo?: string,
+) {
+  const response = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+    body: JSON.stringify({
+      data,
+      email,
+      redirect_to: redirectTo,
+      type: "invite",
+    }),
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json().catch(() => null)) as InviteLinkResponse | null;
+  return payload?.properties?.action_link ?? payload?.action_link ?? null;
 }
 
 function mapInvite(row: InviteRow) {

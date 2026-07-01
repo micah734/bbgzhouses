@@ -158,6 +158,17 @@ async function sendAuthInviteEmail(
 
   if (!response.ok) {
     const message = await response.text();
+    if (
+      response.status === 429 ||
+      /email rate limit exceeded|over_email_send_rate_limit/i.test(message)
+    ) {
+      return {
+        status: "pending",
+        message:
+          "Invite saved, but Supabase is temporarily rate-limiting emails. The email may arrive shortly, or you can try again in a bit.",
+      };
+    }
+
     if (response.status === 504 || /request timed out|deadline exceeded/i.test(message)) {
       return {
         status: "pending",

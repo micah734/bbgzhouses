@@ -379,7 +379,17 @@ export function HouseDeckApp() {
       });
       setInviteDraft(emptyInviteDraft);
       setModal(null);
-      notify(`Invite saved for ${result.invite.email}.`);
+      if (result.inviteLink) {
+        await navigator.clipboard.writeText(result.inviteLink).catch(() => null);
+        notify(`Invite link copied for ${result.invite.email}. Share it directly with the teacher.`);
+        return;
+      }
+
+      notify(
+        result.emailDelivery?.status === "pending"
+          ? `${result.emailDelivery.message} Invite saved for ${result.invite.email}.`
+          : `Invite sent to ${result.invite.email}.`,
+      );
     } catch (error) {
       notify(error instanceof Error ? error.message : "Could not save invite.");
     }

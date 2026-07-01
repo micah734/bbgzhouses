@@ -76,6 +76,12 @@ const emptyInviteDraft = {
   role: "teacher" as SupabaseRole,
 };
 
+type InviteOutcome = {
+  email: string;
+  inviteLink: string | null;
+  message: string;
+};
+
 export function HouseDeckApp() {
   const [activeView, setActiveView] = useState<View>("Dashboard");
   const [students, setStudents] = useState<Student[]>(seedStudents);
@@ -90,6 +96,7 @@ export function HouseDeckApp() {
   const [studentDraft, setStudentDraft] = useState<NewStudentDraft>(emptyStudentDraft);
   const [csvDraft, setCsvDraft] = useState("");
   const [inviteDraft, setInviteDraft] = useState(emptyInviteDraft);
+  const [inviteOutcome, setInviteOutcome] = useState<InviteOutcome | null>(null);
   const [assignmentNames, setAssignmentNames] = useState("");
   const [toast, setToast] = useState("");
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
@@ -244,6 +251,7 @@ export function HouseDeckApp() {
     setEditingStudentId(null);
     setStudentDraft(emptyStudentDraft);
     setInviteDraft(emptyInviteDraft);
+    setInviteOutcome(null);
   };
 
   const addStudent = async (event: FormEvent<HTMLFormElement>) => {
@@ -378,13 +386,20 @@ export function HouseDeckApp() {
         return [result.invite, ...remaining];
       });
       setInviteDraft(emptyInviteDraft);
-      setModal(null);
       if (result.inviteLink) {
         await navigator.clipboard.writeText(result.inviteLink).catch(() => null);
+        setInviteOutcome({
+          email: result.invite.email,
+          inviteLink: result.inviteLink,
+          message:
+            "Email delivery is limited right now, so HouseDeck generated a direct invite link you can share instead.",
+        });
         notify(`Invite link copied for ${result.invite.email}. Share it directly with the teacher.`);
         return;
       }
 
+      setModal(null);
+      setInviteOutcome(null);
       notify(
         result.emailDelivery?.status === "pending"
           ? `${result.emailDelivery.message} Invite saved for ${result.invite.email}.`
@@ -714,6 +729,7 @@ export function HouseDeckApp() {
       <AppModal
         csvDraft={csvDraft}
         inviteDraft={inviteDraft}
+        inviteOutcome={inviteOutcome}
         isAdmin={isAdmin}
         modal={modal}
         onAddStudent={addStudent}
@@ -1036,8 +1052,8 @@ function Points({
   return (
     <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
       <Panel action="Fast entry" title="Find Student">
-        <div className="grid gap-2">
-          {students.slice(0, 12).map((student) => (
+        <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+          {students.map((student) => (
             <button
               className={`rounded-lg border p-3 text-left transition ${
                 selectedStudent.id === student.id
@@ -1452,6 +1468,7 @@ function DisplayHouseCard({
 function AppModal({
   csvDraft,
   inviteDraft,
+  inviteOutcome,
   isAdmin,
   modal,
   onAddStudent,
@@ -1466,6 +1483,7 @@ function AppModal({
 }: {
   csvDraft: string;
   inviteDraft: { email: string; role: SupabaseRole };
+  inviteOutcome: InviteOutcome | null;
   isAdmin: boolean;
   modal: Modal;
   onAddStudent: (event: FormEvent<HTMLFormElement>) => void;
@@ -1511,6 +1529,9 @@ function AppModal({
         {modal === "inviteUser" && (
           <form className="grid gap-4" onSubmit={onInvite}>
             <ModalHeader onClose={onClose} title="Invite Teacher" />
+            <p className="text-sm text-white/60">
+              HouseDeck will try email first. If delivery is delayed, you can still share a direct invite link from here.
+            </p>
             <label className="grid gap-1 text-sm">
               Email Address
               <input
@@ -1533,6 +1554,32 @@ function AppModal({
                 <option value="admin">Admin</option>
               </select>
             </label>
+            {inviteOutcome && (
+              <div className="grid gap-3 rounded-lg border border-yellow-200/20 bg-yellow-200/10 p-4">
+                <div>
+                  <p className="text-sm font-semibold text-yellow-100">Invite ready for {inviteOutcome.email}</p>
+                  <p className="mt-1 text-sm text-yellow-50/80">{inviteOutcome.message}</p>
+                </div>
+                {inviteOutcome.inviteLink && (
+                  <>
+                    <textarea
+                      className="field min-h-24 font-mono text-xs"
+                      readOnly
+                      value={inviteOutcome.inviteLink}
+                    />
+                    <button
+                      className="button-secondary justify-center"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(inviteOutcome.inviteLink ?? "").catch(() => null);
+                      }}
+                      type="button"
+                    >
+                      Copy Invite Link Again
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             <button className="button-primary justify-center" type="submit">Send Invite</button>
           </form>
         )}

@@ -11,13 +11,12 @@ import {
   transactions as seedTransactions,
 } from "@/lib/sample-data";
 import {
-  SupabaseInvite,
+  approveSupabaseProfile,
   SupabaseProfile,
   SupabaseRole,
   SupabaseSession,
   archiveSupabaseTerm,
   awardSupabasePoints,
-  createTeacherInvite,
   createSupabaseStudent,
   ensureProfile,
   getStoredSession,
@@ -40,7 +39,7 @@ type View =
   | "Reports"
   | "Admin";
 
-type Modal = "addStudent" | "editStudent" | "importCsv" | "inviteUser" | null;
+type Modal = "addStudent" | "editStudent" | "importCsv" | null;
 
 type NewStudentDraft = {
   id?: string;
@@ -71,17 +70,6 @@ const emptyStudentDraft: NewStudentDraft = {
   house: "Red",
 };
 
-const emptyInviteDraft = {
-  email: "",
-  role: "teacher" as SupabaseRole,
-};
-
-type InviteOutcome = {
-  email: string;
-  inviteLink: string | null;
-  message: string;
-};
-
 export function HouseDeckApp() {
   const [activeView, setActiveView] = useState<View>("Dashboard");
   const [students, setStudents] = useState<Student[]>(seedStudents);
@@ -95,15 +83,13 @@ export function HouseDeckApp() {
   const [modal, setModal] = useState<Modal>(null);
   const [studentDraft, setStudentDraft] = useState<NewStudentDraft>(emptyStudentDraft);
   const [csvDraft, setCsvDraft] = useState("");
-  const [inviteDraft, setInviteDraft] = useState(emptyInviteDraft);
-  const [inviteOutcome, setInviteOutcome] = useState<InviteOutcome | null>(null);
   const [assignmentNames, setAssignmentNames] = useState("");
   const [toast, setToast] = useState("");
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [syncLabel, setSyncLabel] = useState("Syncing live data");
   const [session, setSession] = useState<SupabaseSession | null>(null);
   const [profile, setProfile] = useState<SupabaseProfile | null>(null);
-  const [invites, setInvites] = useState<SupabaseInvite[]>([]);
+  const [pendingProfiles, setPendingProfiles] = useState<SupabaseProfile[]>([]);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authName, setAuthName] = useState("");
@@ -111,6 +97,11 @@ export function HouseDeckApp() {
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
   const isAdmin = profile?.role === "admin";
+  const isApproved = profile?.approvalStatus === "approved";
+  const visibleViews = useMemo(
+    () => (isAdmin ? views : views.filter((view) => view !== "Reports" && view !== "Admin")),
+    [isAdmin],
+  );
 
   const sortedStudents = useMemo(
     () => [...students].sort((a, b) => b.points - a.points),
@@ -138,8 +129,8 @@ export function HouseDeckApp() {
 
     try {
       const data = await loadHouseDeckData(currentSession.access_token, currentSession.user.id);
+      setPendingProfiles(data.pendingProfiles);
       setProfile(data.profile);
-      setInvites(data.invites);
       setStudents(data.students.length > 0 ? data.students : seedStudents);
       setTransactions(data.transactions);
       setDataSource("supabase");
@@ -193,6 +184,13 @@ export function HouseDeckApp() {
     return () => window.clearInterval(interval);
   }, [refreshSupabaseData, session, supabaseReady]);
 
+  useEffect(() => {
+    if (isAdmin) return;
+    if (activeView === "Reports" || activeView === "Admin") {
+      setActiveView("Dashboard");
+    }
+  }, [activeView, isAdmin]);
+
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabaseReady) {
@@ -221,7 +219,7 @@ export function HouseDeckApp() {
     storeSession(null);
     setSession(null);
     setProfile(null);
-    setInvites([]);
+    setPendingProfiles([]);
     setStudents(seedStudents);
     setTransactions(seedTransactions);
     setDataSource("sample");
@@ -250,8 +248,6 @@ export function HouseDeckApp() {
     setModal(null);
     setEditingStudentId(null);
     setStudentDraft(emptyStudentDraft);
-    setInviteDraft(emptyInviteDraft);
-    setInviteOutcome(null);
   };
 
   const addStudent = async (event: FormEvent<HTMLFormElement>) => {
@@ -364,49 +360,19 @@ export function HouseDeckApp() {
     }
   };
 
-  const inviteUser = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!inviteDraft.email.includes("@")) {
-      notify("Enter a valid email address.");
-      return;
-    }
+  const approveProfile = async (profileId: string, role: SupabaseRole) => {
     if (!session || !supabaseReady) {
-      notify("Sign in to send invites.");
-      return;
-    }
-    if (!isAdmin) {
-      notify("Only admins can invite teachers.");
+      notify("Sign in to approve accounts.");
       return;
     }
 
     try {
-      const result = await createTeacherInvite(session.access_token, inviteDraft);
-      setInvites((current) => {
-        const remaining = current.filter((invite) => invite.email !== result.invite.email);
-        return [result.invite, ...remaining];
-      });
-      setInviteDraft(emptyInviteDraft);
-      if (result.inviteLink) {
-        await navigator.clipboard.writeText(result.inviteLink).catch(() => null);
-        setInviteOutcome({
-          email: result.invite.email,
-          inviteLink: result.inviteLink,
-          message:
-            "Email delivery is limited right now, so HouseDeck generated a direct invite link you can share instead.",
-        });
-        notify(`Invite link copied for ${result.invite.email}. Share it directly with the teacher.`);
-        return;
-      }
-
-      setModal(null);
-      setInviteOutcome(null);
-      notify(
-        result.emailDelivery?.status === "pending"
-          ? `${result.emailDelivery.message} Invite saved for ${result.invite.email}.`
-          : `Invite sent to ${result.invite.email}.`,
-      );
+      const result = await approveSupabaseProfile(session.access_token, { profileId, role });
+      setPendingProfiles((current) => current.filter((item) => item.id !== profileId));
+      notify(`${result.profile.fullName} approved as ${result.profile.role}.`);
+      await refreshSupabaseData(session);
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Could not save invite.");
+      notify(error instanceof Error ? error.message : "Could not approve account.");
     }
   };
 
@@ -551,6 +517,19 @@ export function HouseDeckApp() {
     );
   }
 
+  if (!isApproved) {
+    return (
+      <>
+        <PendingApprovalScreen
+          email={session.user.email ?? "your account"}
+          onRefresh={() => void refreshSupabaseData(session)}
+          onSignOut={handleSignOut}
+        />
+        <Toast message={toast} />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#050609] text-white">
       <div className="pointer-events-none fixed inset-0 opacity-70">
@@ -560,7 +539,7 @@ export function HouseDeckApp() {
       </div>
 
       <div className="relative grid min-h-screen lg:grid-cols-[270px_1fr]">
-        <aside className="border-b border-white/10 bg-black/45 px-4 py-4 backdrop-blur-xl lg:border-b-0 lg:border-r">
+        <aside className="flex min-h-screen flex-col border-b border-white/10 bg-black/45 px-4 py-4 backdrop-blur-xl lg:border-b-0 lg:border-r">
           <div className="flex items-center gap-3">
             <div className="relative size-11 overflow-hidden rounded-lg border border-yellow-200/30 bg-black">
               <Image alt="HouseDeck lion logo" className="object-cover" fill sizes="44px" src="/brand/lion.png" />
@@ -572,7 +551,7 @@ export function HouseDeckApp() {
           </div>
 
           <nav className="mt-6 grid grid-cols-2 gap-2 lg:grid-cols-1">
-            {views.map((view) => (
+            {visibleViews.map((view) => (
               <button
                 key={view}
                 className={`rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
@@ -607,37 +586,12 @@ export function HouseDeckApp() {
             </div>
           </div>
 
-          <div className="mt-4 rounded-lg border border-yellow-200/15 bg-yellow-200/[0.06] p-3 text-xs text-yellow-100/80">
-            <p className="font-semibold uppercase tracking-[0.16em]">Status</p>
-            <p className="mt-2">Live sync: {syncLabel}</p>
-            <p className="mt-1">
-              {dataSource === "supabase" ? "Database sync active." : "Loading database data."}
-            </p>
-          </div>
-
-          <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.045] p-3 text-xs text-white/70">
-            <p className="font-semibold uppercase tracking-[0.16em] text-white/50">
-              Account
-            </p>
-            <p className="mt-2 truncate">{session.user.email ?? "Signed in"}</p>
-            <div className="mt-3 grid gap-2">
-              <button className="button-compact justify-center" onClick={() => void refreshSupabaseData()} type="button">
-                Refresh Data
-              </button>
-              <button className="button-compact justify-center" onClick={handleSignOut} type="button">
-                Sign Out
-              </button>
-            </div>
-          </div>
         </aside>
 
         <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8">
           <header className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-sm font-medium text-yellow-100/70">
-                Modern school culture platform
-              </p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">
+              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
                 {activeView}
               </h1>
             </div>
@@ -654,8 +608,13 @@ export function HouseDeckApp() {
           <div className="py-6">
             {activeView === "Dashboard" && (
               <Dashboard
+                dataSource={dataSource}
                 houseTotals={houseTotals}
                 leadingHouse={leadingHouse}
+                onRefresh={() => void refreshSupabaseData()}
+                onSignOut={handleSignOut}
+                sessionEmail={session.user.email ?? "Signed in"}
+                syncLabel={syncLabel}
                 students={sortedStudents}
                 transactions={transactions}
               />
@@ -699,7 +658,7 @@ export function HouseDeckApp() {
                 students={students}
               />
             )}
-            {activeView === "Reports" && (
+            {isAdmin && activeView === "Reports" && (
               <Reports
                 houseTotals={houseTotals}
                 onExportStudents={() => downloadCsv("housedeck-students.csv", studentsToCsv(students))}
@@ -707,17 +666,17 @@ export function HouseDeckApp() {
                 transactions={transactions}
               />
             )}
-            {activeView === "Admin" && (
+            {isAdmin && activeView === "Admin" && (
               <Admin
                 houseTotals={houseTotals}
-                invites={invites}
                 isAdmin={isAdmin}
+                pendingProfiles={pendingProfiles}
+                onApproveProfile={approveProfile}
                 onArchive={archiveAndReset}
                 onBackup={() => {
                   downloadJson("housedeck-backup.json", { students, transactions });
                   notify("Backup downloaded.");
                 }}
-                onInvite={() => setModal("inviteUser")}
                 onReset={resetPoints}
               />
             )}
@@ -728,17 +687,12 @@ export function HouseDeckApp() {
       <Toast message={toast} />
       <AppModal
         csvDraft={csvDraft}
-        inviteDraft={inviteDraft}
-        inviteOutcome={inviteOutcome}
-        isAdmin={isAdmin}
         modal={modal}
         onAddStudent={addStudent}
         onClose={closeModal}
         onImport={importStudents}
-        onInvite={inviteUser}
         onUpdateStudent={updateStudent}
         setCsvDraft={setCsvDraft}
-        setInviteDraft={setInviteDraft}
         setStudentDraft={setStudentDraft}
         studentDraft={studentDraft}
       />
@@ -747,19 +701,29 @@ export function HouseDeckApp() {
 }
 
 function Dashboard({
+  dataSource,
   houseTotals,
   leadingHouse,
+  onRefresh,
+  onSignOut,
+  sessionEmail,
+  syncLabel,
   students,
   transactions,
 }: {
+  dataSource: "sample" | "supabase";
   houseTotals: HouseTotal[];
   leadingHouse: HouseTotal;
+  onRefresh: () => void;
+  onSignOut: () => void;
+  sessionEmail: string;
+  syncLabel: string;
   students: Student[];
   transactions: Transaction[];
 }) {
   return (
     <div className="grid gap-5">
-      <section className="grid gap-3 md:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Students" note="0 unassigned" value={students.length.toString()} />
         <Metric label="Transactions" note="This term" value={transactions.length.toString()} />
         <Metric label="Leading House" note={`${leadingHouse.points} points`} value={leadingHouse.house} />
@@ -779,16 +743,29 @@ function Dashboard({
         </Panel>
       </section>
 
+      <Panel action="Live feed" title="Recent Activity">
+        <ActivityList students={students} transactions={transactions.slice(0, 5)} />
+      </Panel>
+
       <section className="grid gap-5 lg:grid-cols-2">
-        <Panel action="Portable" title="Setup Goals">
-          <div className="grid gap-3 text-sm text-white/70">
-            <p>Keep the four house colors fixed while allowing mascot artwork later.</p>
-            <p>Separate admin tools, teacher point entry, and public scoreboard views.</p>
-            <p>Store students, families, users, points, audit logs, and school terms in a real database.</p>
+        <Panel title="Status">
+          <div className="text-sm text-yellow-100/80">
+            <p>Live sync: {syncLabel}</p>
+            <p className="mt-2 text-white/65">
+              {dataSource === "supabase" ? "Database sync active." : "Loading database data."}
+            </p>
           </div>
         </Panel>
-        <Panel action="Live feed" title="Recent Activity">
-          <ActivityList students={students} transactions={transactions.slice(0, 5)} />
+        <Panel title="Account">
+          <p className="truncate text-sm text-white/70">{sessionEmail}</p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <button className="button-compact justify-center" onClick={onRefresh} type="button">
+              Refresh Data
+            </button>
+            <button className="button-compact justify-center" onClick={onSignOut} type="button">
+              Sign Out
+            </button>
+          </div>
         </Panel>
       </section>
     </div>
@@ -927,9 +904,41 @@ function LoginScreen({
           </form>
 
           <p className="mt-5 text-center text-xs text-white/45">
-            Invited staff should create their account with the same school email that was invited.
-            Email confirmation is required before the first sign-in.
+            Teachers can create their own account here. An administrator will approve access before any school data is shown.
           </p>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function PendingApprovalScreen({
+  email,
+  onRefresh,
+  onSignOut,
+}: {
+  email: string;
+  onRefresh: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-[#030407] text-white">
+      <div className="pointer-events-none absolute inset-0 opacity-75">
+        <div className="absolute -left-24 top-10 size-[520px] rounded-full bg-red-600/20 blur-3xl" />
+        <div className="absolute right-0 top-20 size-[520px] rounded-full bg-blue-600/20 blur-3xl" />
+        <div className="absolute bottom-[-10%] left-[18%] size-[520px] rounded-full bg-green-600/15 blur-3xl" />
+      </div>
+      <section className="relative grid min-h-screen place-items-center px-4 py-8">
+        <div className="w-full max-w-xl rounded-lg border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30 backdrop-blur-xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-yellow-100/65">Awaiting Approval</p>
+          <h1 className="mt-3 text-3xl font-semibold">Your account is waiting for an administrator.</h1>
+          <p className="mt-4 text-sm leading-7 text-white/65">
+            {email} has been created successfully. An administrator needs to approve your account before you can see school data.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button className="button-primary" onClick={onRefresh} type="button">Check Again</button>
+            <button className="button-secondary" onClick={onSignOut} type="button">Sign Out</button>
+          </div>
         </div>
       </section>
     </main>
@@ -1324,19 +1333,19 @@ function Reports({
 
 function Admin({
   houseTotals,
-  invites,
   isAdmin,
+  pendingProfiles,
+  onApproveProfile,
   onArchive,
   onBackup,
-  onInvite,
   onReset,
 }: {
   houseTotals: HouseTotal[];
-  invites: SupabaseInvite[];
   isAdmin: boolean;
+  pendingProfiles: SupabaseProfile[];
+  onApproveProfile: (profileId: string, role: SupabaseRole) => void;
   onArchive: () => void;
   onBackup: () => void;
-  onInvite: () => void;
   onReset: () => void;
 }) {
   return (
@@ -1350,22 +1359,14 @@ function Admin({
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <button
-              className="button-secondary"
-              disabled={!isAdmin}
-              onClick={onInvite}
-              type="button"
-            >
-              Invite Teacher
-            </button>
             <button className="button-secondary" onClick={onBackup} type="button">Export Backup</button>
             <button className="button-secondary" onClick={onReset} type="button">Reset Points</button>
             <button className="button-primary" onClick={onArchive} type="button">Archive Term</button>
           </div>
           <p className="text-sm text-white/60">
             {isAdmin
-              ? "Admins can invite staff and keep teacher roles synced with sign-in."
-              : "Your account is a teacher account. Ask an admin to send staff invites."}
+              ? "Teachers can create their own login, and admins approve access here before school data opens up."
+              : "Your account is a teacher account."}
           </p>
         </div>
       </Panel>
@@ -1384,25 +1385,36 @@ function Admin({
           ))}
         </div>
       </Panel>
-      <Panel action={`${invites.length} tracked`} title="Pending Invites">
+      <Panel action={`${pendingProfiles.length} waiting`} title="Access Requests">
         <div className="grid gap-3">
-          {invites.length === 0 ? (
-            <p className="text-sm text-white/55">No invites yet. Admin invites will appear here once they are saved.</p>
+          {pendingProfiles.length === 0 ? (
+            <p className="text-sm text-white/55">No teacher signups are waiting for approval right now.</p>
           ) : (
-            invites.map((invite) => (
-              <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3" key={invite.email}>
-                <div className="flex items-center justify-between gap-3">
+            pendingProfiles.map((pendingProfile) => (
+              <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3" key={pendingProfile.id}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="font-medium">{invite.email}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/45">{invite.role}</p>
+                    <p className="font-medium">{pendingProfile.fullName}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-yellow-100/70">
+                      Awaiting approval
+                    </p>
                   </div>
-                  <span className={`rounded-full border px-3 py-1 text-xs ${
-                    invite.acceptedAt
-                      ? "border-emerald-400/30 text-emerald-200"
-                      : "border-yellow-300/30 text-yellow-100"
-                  }`}>
-                    {invite.acceptedAt ? "Accepted" : "Pending"}
-                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      className="button-secondary"
+                      onClick={() => onApproveProfile(pendingProfile.id, "teacher")}
+                      type="button"
+                    >
+                      Approve Teacher
+                    </button>
+                    <button
+                      className="button-primary"
+                      onClick={() => onApproveProfile(pendingProfile.id, "admin")}
+                      type="button"
+                    >
+                      Make Admin
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -1467,32 +1479,22 @@ function DisplayHouseCard({
 
 function AppModal({
   csvDraft,
-  inviteDraft,
-  inviteOutcome,
-  isAdmin,
   modal,
   onAddStudent,
   onClose,
   onImport,
-  onInvite,
   onUpdateStudent,
   setCsvDraft,
-  setInviteDraft,
   setStudentDraft,
   studentDraft,
 }: {
   csvDraft: string;
-  inviteDraft: { email: string; role: SupabaseRole };
-  inviteOutcome: InviteOutcome | null;
-  isAdmin: boolean;
   modal: Modal;
   onAddStudent: (event: FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
   onImport: (event: FormEvent<HTMLFormElement>) => void;
-  onInvite: (event: FormEvent<HTMLFormElement>) => void;
   onUpdateStudent: (event: FormEvent<HTMLFormElement> | MouseEvent<HTMLButtonElement>) => void;
   setCsvDraft: (value: string) => void;
-  setInviteDraft: (value: { email: string; role: SupabaseRole }) => void;
   setStudentDraft: (value: NewStudentDraft) => void;
   studentDraft: NewStudentDraft;
 }) {
@@ -1523,64 +1525,6 @@ function AppModal({
             <p className="text-sm text-white/60">Paste rows as first_name,last_name,grade,family_id. A header row is optional.</p>
             <textarea className="field min-h-44" onChange={(event) => setCsvDraft(event.target.value)} placeholder={"first_name,last_name,grade,family_id\nAlice,Johnson,5,FAM001\nBob,Smith,4,"} value={csvDraft} />
             <button className="button-primary justify-center" type="submit">Import Students</button>
-          </form>
-        )}
-
-        {modal === "inviteUser" && (
-          <form className="grid gap-4" onSubmit={onInvite}>
-            <ModalHeader onClose={onClose} title="Invite Teacher" />
-            <p className="text-sm text-white/60">
-              HouseDeck will try email first. If delivery is delayed, you can still share a direct invite link from here.
-            </p>
-            <label className="grid gap-1 text-sm">
-              Email Address
-              <input
-                className="field"
-                onChange={(event) => setInviteDraft({ ...inviteDraft, email: event.target.value })}
-                placeholder="teacher@school.edu"
-                type="email"
-                value={inviteDraft.email}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              Role
-              <select
-                className="field"
-                disabled={!isAdmin}
-                onChange={(event) => setInviteDraft({ ...inviteDraft, role: event.target.value as SupabaseRole })}
-                value={inviteDraft.role}
-              >
-                <option value="teacher">Teacher</option>
-                <option value="admin">Admin</option>
-              </select>
-            </label>
-            {inviteOutcome && (
-              <div className="grid gap-3 rounded-lg border border-yellow-200/20 bg-yellow-200/10 p-4">
-                <div>
-                  <p className="text-sm font-semibold text-yellow-100">Invite ready for {inviteOutcome.email}</p>
-                  <p className="mt-1 text-sm text-yellow-50/80">{inviteOutcome.message}</p>
-                </div>
-                {inviteOutcome.inviteLink && (
-                  <>
-                    <textarea
-                      className="field min-h-24 font-mono text-xs"
-                      readOnly
-                      value={inviteOutcome.inviteLink}
-                    />
-                    <button
-                      className="button-secondary justify-center"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(inviteOutcome.inviteLink ?? "").catch(() => null);
-                      }}
-                      type="button"
-                    >
-                      Copy Invite Link Again
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-            <button className="button-primary justify-center" type="submit">Send Invite</button>
           </form>
         )}
       </div>
@@ -1682,10 +1626,14 @@ function Panel({ action, children, title }: { action?: string; children: React.R
 
 function Metric({ label, note, value }: { label: string; note: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.055] p-4 shadow-xl shadow-black/10">
-      <p className="text-sm font-medium text-white/55">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-1 text-xs text-white/45">{note}</p>
+    <div className="rounded-lg border border-white/10 bg-white/[0.055] px-4 py-3 shadow-xl shadow-black/10">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-white/55">{label}</p>
+          <p className="mt-1 text-xs text-white/45">{note}</p>
+        </div>
+        <p className="text-2xl font-semibold tracking-tight sm:text-3xl">{value}</p>
+      </div>
     </div>
   );
 }

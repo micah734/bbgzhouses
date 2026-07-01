@@ -16,6 +16,10 @@ type InviteRow = {
   role: InviteRole;
 };
 
+type InviteEmailDelivery =
+  | { status: "sent" }
+  | { status: "pending"; message: string };
+
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get("authorization");
@@ -69,8 +73,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
 
+    const inviteRows = await writeAdminInvite(supabaseUrl, serviceRoleKey, {
+      email: normalizedEmail,
+      invited_by: user.id,
+      role,
+    });
+
     const redirectTo = new URL("/", request.url).toString();
-    await sendAuthInviteEmail(
+    const emailDelivery = await sendAuthInviteEmail(
       supabaseUrl,
       serviceRoleKey,
       normalizedEmail,
@@ -82,13 +92,8 @@ export async function POST(request: Request) {
       redirectTo,
     );
 
-    const inviteRows = await writeAdminInvite(supabaseUrl, serviceRoleKey, {
-      email: normalizedEmail,
-      invited_by: user.id,
-      role,
-    });
-
     return NextResponse.json({
+      emailDelivery,
       invite: mapInvite(inviteRows[0]),
     });
   } catch (error) {
@@ -136,7 +141,7 @@ async function sendAuthInviteEmail(
   email: string,
   data?: Record<string, string>,
   redirectTo?: string,
-) {
+): Promise<InviteEmailDelivery> {
   const response = await fetch(`${supabaseUrl}/auth/v1/invite`, {
     body: JSON.stringify({
       data,
@@ -153,8 +158,18 @@ async function sendAuthInviteEmail(
 
   if (!response.ok) {
     const message = await response.text();
+    if (response.status === 504 || /request timed out|deadline exceeded/i.test(message)) {
+      return {
+        status: "pending",
+        message:
+          "Invite saved, but Supabase email delivery timed out. The email may still arrive shortly.",
+      };
+    }
+
     throw new Error(message || "Could not send invite email.");
   }
+
+  return { status: "sent" };
 }
 
 async function restAdminFetch<T>(

@@ -15,11 +15,13 @@ export type SupabaseSession = {
 };
 
 export type SupabaseRole = "admin" | "teacher";
+export type SupabaseApprovalStatus = "pending" | "approved";
 
 export type SupabaseProfile = {
   id: string;
   fullName: string;
   role: SupabaseRole;
+  approvalStatus: SupabaseApprovalStatus;
 };
 
 export type SupabaseInvite = {
@@ -33,6 +35,7 @@ export type SupabaseInvite = {
 
 type HouseDeckData = {
   invites: SupabaseInvite[];
+  pendingProfiles: SupabaseProfile[];
   profile: SupabaseProfile | null;
   students: Student[];
   transactions: Transaction[];
@@ -62,6 +65,7 @@ type SupabaseProfileRow = {
   id: string;
   full_name: string;
   role: SupabaseRole;
+  approval_status: SupabaseApprovalStatus;
 };
 
 type SupabaseInviteRow = {
@@ -109,7 +113,10 @@ export async function signInWithPassword(email: string, password: string) {
     body: JSON.stringify({ email, password }),
     method: "POST",
   });
-  const payload = await response.json();
+  const payload = await readJsonResponse<{
+    error_description?: string;
+    msg?: string;
+  }>(response);
 
   if (!response.ok) {
     throw new Error(payload.error_description || payload.msg || "Sign in failed.");
@@ -119,23 +126,29 @@ export async function signInWithPassword(email: string, password: string) {
 }
 
 export async function signUpWithPassword(email: string, password: string, fullName: string) {
-  const response = await supabaseFetch("/auth/v1/signup", {
+  const response = await fetch("/api/auth/signup", {
     body: JSON.stringify({
       email,
       password,
-      data: { full_name: fullName },
+      fullName,
     }),
+    headers: {
+      "Content-Type": "application/json",
+    },
     method: "POST",
   });
-  const payload = await response.json();
+  const payload = await readJsonResponse<{
+    error?: string;
+    session?: SupabaseSession;
+  }>(response);
 
   if (!response.ok) {
-    throw new Error(payload.error_description || payload.msg || "Sign up failed.");
+    throw new Error(payload.error || "Sign up failed.");
   }
 
-  const session = payload.session ?? payload;
-  if (!session.access_token || !session.user) {
-    throw new Error("Account created. Check email confirmation before signing in.");
+  const session = payload.session;
+  if (!session?.access_token || !session.user) {
+    throw new Error("Account created, but sign-in did not finish automatically.");
   }
 
   return session as SupabaseSession;
@@ -152,12 +165,9 @@ export async function ensureProfile(session: SupabaseSession, fullName?: string)
   const existingInvite = session.user.email
     ? await fetchInviteForEmail(session.access_token, session.user.email)
     : null;
-  const fallbackRole = existingProfile
-    ? existingProfile.role
-    : (await shouldBootstrapAdmin(session.access_token))
-      ? "admin"
-      : "teacher";
+  const fallbackRole = existingProfile?.role ?? "teacher";
   const nextRole = existingInvite?.role ?? fallbackRole;
+  const nextApprovalStatus = existingProfile?.approvalStatus ?? "pending";
 
   await restFetch(
     "/hd_profiles?on_conflict=id",
@@ -167,6 +177,7 @@ export async function ensureProfile(session: SupabaseSession, fullName?: string)
         id: session.user.id,
         full_name: name,
         role: nextRole,
+        approval_status: nextApprovalStatus,
       }),
       headers: {
         Prefer: "resolution=merge-duplicates,return=minimal",
@@ -188,28 +199,69 @@ export async function ensureProfile(session: SupabaseSession, fullName?: string)
 
 export async function loadHouseDeckData(accessToken: string, userId: string) {
   const profile = await fetchProfile(accessToken, userId);
-  const [studentsResponse, transactionsResponse, invitesResponse] = await Promise.all([
-    restFetch("/hd_students?active=eq.true&order=last_name.asc", accessToken),
-    restFetch("/hd_point_transactions?order=created_at.desc&limit=100", accessToken),
-    profile?.role === "admin"
+  const canAccessSchoolData = profile?.approvalStatus === "approved";
+  const isAdmin = profile?.role === "admin" && canAccessSchoolData;
+  const [studentsResponse, transactionsResponse, invitesResponse, pendingProfilesResponse] = await Promise.all([
+    canAccessSchoolData
+      ? restFetch("/hd_students?active=eq.true&order=last_name.asc", accessToken)
+      : Promise.resolve(null),
+    canAccessSchoolData
+      ? restFetch("/hd_point_transactions?order=created_at.desc&limit=100", accessToken)
+      : Promise.resolve(null),
+    isAdmin
       ? restFetch("/hd_user_invites?order=created_at.desc", accessToken)
+      : Promise.resolve(null),
+    isAdmin
+      ? restFetch("/hd_profiles?approval_status=eq.pending&order=created_at.asc", accessToken)
       : Promise.resolve(null),
   ]);
 
-  const [studentRows, transactionRows, inviteRows] = await Promise.all([
-    studentsResponse.json() as Promise<SupabaseStudentRow[]>,
-    transactionsResponse.json() as Promise<SupabaseTransactionRow[]>,
+  const [studentRows, transactionRows, inviteRows, pendingProfileRows] = await Promise.all([
+    studentsResponse
+      ? (studentsResponse.json() as Promise<SupabaseStudentRow[]>)
+      : Promise.resolve([]),
+    transactionsResponse
+      ? (transactionsResponse.json() as Promise<SupabaseTransactionRow[]>)
+      : Promise.resolve([]),
     invitesResponse
       ? (invitesResponse.json() as Promise<SupabaseInviteRow[]>)
+      : Promise.resolve([]),
+    pendingProfilesResponse
+      ? (pendingProfilesResponse.json() as Promise<SupabaseProfileRow[]>)
       : Promise.resolve([]),
   ]);
 
   return {
     invites: inviteRows.map(mapInvite),
+    pendingProfiles: pendingProfileRows.map(mapProfile),
     profile,
     students: studentRows.map(mapStudent),
     transactions: transactionRows.map(mapTransaction),
   } satisfies HouseDeckData;
+}
+
+export async function approveSupabaseProfile(
+  accessToken: string,
+  input: { profileId: string; role: SupabaseRole },
+) {
+  const response = await fetch("/api/profile-approvals", {
+    body: JSON.stringify(input),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  const payload = await readOptionalJsonResponse<{ error?: string; profile: SupabaseProfile }>(response);
+  if (!response.ok) {
+    throw new Error(
+      (payload && typeof payload.error === "string" && payload.error) ||
+        "Could not approve account.",
+    );
+  }
+
+  return payload as { profile: SupabaseProfile };
 }
 
 export async function createTeacherInvite(
@@ -225,7 +277,12 @@ export async function createTeacherInvite(
     method: "POST",
   });
 
-  const payload = await response.json().catch(() => null);
+  const payload = await readOptionalJsonResponse<{
+    error?: string;
+    emailDelivery?: { status: "sent" } | { status: "pending"; message: string };
+    invite: SupabaseInvite;
+    inviteLink?: string | null;
+  }>(response);
   if (!response.ok) {
     throw new Error(
       (payload && typeof payload.error === "string" && payload.error) ||
@@ -403,6 +460,30 @@ async function supabaseFetch(path: string, init: RequestInit = {}) {
   });
 }
 
+async function readJsonResponse<T>(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) {
+    throw new Error("Received an empty response from Supabase.");
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Received an unexpected response while contacting Supabase: ${text.slice(0, 120)}`);
+  }
+}
+
+async function readOptionalJsonResponse<T>(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) return null;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Received an unexpected response from the app server: ${text.slice(0, 120)}`);
+  }
+}
+
 async function restFetch(path: string, accessToken: string, init: RequestInit = {}) {
   const response = await supabaseFetch(`/rest/v1${path}`, {
     ...init,
@@ -449,6 +530,7 @@ function mapProfile(row: SupabaseProfileRow): SupabaseProfile {
     id: row.id,
     fullName: row.full_name,
     role: row.role,
+    approvalStatus: row.approval_status,
   };
 }
 
@@ -464,7 +546,9 @@ function mapInvite(row: SupabaseInviteRow): SupabaseInvite {
 }
 
 async function fetchProfile(accessToken: string, profileId?: string) {
-  const query = profileId ? `/hd_profiles?id=eq.${profileId}` : "/hd_profiles?select=id,full_name,role";
+  const query = profileId
+    ? `/hd_profiles?id=eq.${profileId}`
+    : "/hd_profiles?select=id,full_name,role,approval_status";
   const response = await restFetch(query, accessToken, {
     headers: {
       Prefer: "return=representation",
@@ -478,10 +562,4 @@ async function fetchInviteForEmail(accessToken: string, email: string) {
   const response = await restFetch(`/hd_user_invites?email=eq.${encodeURIComponent(email.toLowerCase())}`, accessToken);
   const rows = (await response.json()) as SupabaseInviteRow[];
   return rows[0] ? mapInvite(rows[0]) : null;
-}
-
-async function shouldBootstrapAdmin(accessToken: string) {
-  const response = await restFetch("/hd_profiles?select=id&limit=1", accessToken);
-  const rows = (await response.json()) as Array<{ id: string }>;
-  return rows.length === 0;
 }

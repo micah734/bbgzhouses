@@ -233,7 +233,11 @@ export async function createTeacherInvite(
     );
   }
 
-  return payload as { invite: SupabaseInvite };
+  return payload as {
+    emailDelivery?: { status: "sent" } | { status: "pending"; message: string };
+    invite: SupabaseInvite;
+    inviteLink?: string | null;
+  };
 }
 
 export async function createSupabaseStudent(

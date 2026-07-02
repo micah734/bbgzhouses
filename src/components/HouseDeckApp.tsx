@@ -1603,11 +1603,8 @@ function Points({
             Reason
             <textarea className="field min-h-24" disabled={isAwardingPoints} onChange={(event) => setPointReason(event.target.value)} placeholder="Add a short note for the activity feed and audit log" value={pointReason} />
           </label>
-          <button className="button-primary hidden w-full justify-center py-3 md:inline-flex disabled:cursor-not-allowed disabled:opacity-60" disabled={isAwardingPoints} onClick={onAward} type="button">
-            {isAwardingPoints ? "Saving..." : `Award ${pointAmount > 0 ? `+${pointAmount}` : pointAmount} Points`}
-          </button>
-          <div className="sticky bottom-3 z-10 md:hidden">
-            <button className="button-primary w-full justify-center py-4 text-base shadow-2xl shadow-black/40 disabled:cursor-not-allowed disabled:opacity-60" disabled={isAwardingPoints} onClick={onAward} type="button">
+          <div className="sticky bottom-3 z-10 md:static">
+            <button className="button-primary w-full justify-center py-4 text-base shadow-2xl shadow-black/40 disabled:cursor-not-allowed disabled:opacity-60 md:py-3 md:text-sm md:shadow-none" disabled={isAwardingPoints} onClick={onAward} type="button">
               {isAwardingPoints
                 ? `Saving for ${selectedStudent.firstName}...`
                 : `Award ${pointAmount > 0 ? `+${pointAmount}` : pointAmount} Points to ${selectedStudent.firstName}`}

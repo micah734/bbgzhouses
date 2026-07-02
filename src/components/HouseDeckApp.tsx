@@ -1005,7 +1005,20 @@ function Dashboard({
         <Panel action="Public display ready" title="House Standings">
           <div className="grid gap-3">
             {houseTotals.map((house, index) => (
-              <HouseRow house={house} index={index} key={house.house} mascotImage={mascotImages[house.house]} />
+              <HouseRow
+                house={house}
+                index={index}
+                key={house.house}
+                mascotImage={mascotImages[house.house]}
+                onClick={() =>
+                  onOpenFilteredTransactions({
+                    dateFilter: "",
+                    dateRange: "all",
+                    houseFilter: house.house,
+                    query: "",
+                  })
+                }
+              />
             ))}
           </div>
         </Panel>
@@ -1015,7 +1028,18 @@ function Dashboard({
       </section>
 
       <Panel action="Live feed" title="Recent Activity">
-        <ActivityList students={students} transactions={transactions.slice(0, 5)} />
+        <ActivityList
+          onSelectTransaction={(transaction) =>
+            onOpenFilteredTransactions({
+              dateFilter: transaction.date,
+              dateRange: "all",
+              houseFilter: transaction.house ?? "All",
+              query: transaction.teacher,
+            })
+          }
+          students={students}
+          transactions={transactions.slice(0, 5)}
+        />
       </Panel>
     </div>
   );
@@ -2333,9 +2357,19 @@ function HouseBadge({ house }: { house: HouseName }) {
   );
 }
 
-function HouseRow({ house, index, mascotImage }: { house: HouseTotal; index?: number; mascotImage?: string | null }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+function HouseRow({
+  house,
+  index,
+  mascotImage,
+  onClick,
+}: {
+  house: HouseTotal;
+  index?: number;
+  mascotImage?: string | null;
+  onClick?: () => void;
+}) {
+  const content = (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-4 transition hover:border-white/20 hover:bg-black/30">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {typeof index === "number" ? <span className="grid size-8 place-items-center rounded-lg bg-white/10 font-mono text-sm">{index + 1}</span> : null}
@@ -2357,6 +2391,16 @@ function HouseRow({ house, index, mascotImage }: { house: HouseTotal; index?: nu
         <div className="h-2 rounded-full scoreboard-glow-bar" style={{ backgroundColor: houseStyles[house.house].hex, color: houseStyles[house.house].hex, width: `${house.percent}%` }} />
       </div>
     </div>
+  );
+
+  if (!onClick) {
+    return content;
+  }
+
+  return (
+    <button className="text-left" onClick={onClick} type="button">
+      {content}
+    </button>
   );
 }
 
@@ -2380,9 +2424,11 @@ function StudentList({ students }: { students: Student[] }) {
 }
 
 function ActivityList({
+  onSelectTransaction,
   students = seedStudents,
   transactions,
 }: {
+  onSelectTransaction?: (transaction: Transaction) => void;
   students?: Student[];
   transactions: Transaction[];
 }) {
@@ -2395,14 +2441,24 @@ function ActivityList({
           : transaction.house
             ? `${transaction.house} House`
             : "House";
-        return (
-          <div className="rounded-lg border border-white/10 bg-black/20 p-3" key={transaction.id}>
+        const content = (
+          <div className="rounded-lg border border-white/10 bg-black/20 p-3 transition hover:border-white/20 hover:bg-black/30" key={transaction.id}>
             <div className="flex items-center justify-between gap-3">
               <p className="font-medium">{subject}</p>
               <span className="font-mono text-sm font-semibold">{transaction.points > 0 ? `+${transaction.points}` : transaction.points}</span>
             </div>
             <p className="mt-1 text-sm text-white/55">{transaction.category} by {transaction.teacher} - {transaction.reason}</p>
           </div>
+        );
+
+        if (!onSelectTransaction) {
+          return content;
+        }
+
+        return (
+          <button className="text-left" key={transaction.id} onClick={() => onSelectTransaction(transaction)} type="button">
+            {content}
+          </button>
         );
       })}
     </div>

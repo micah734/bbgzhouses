@@ -739,13 +739,23 @@ export function HouseDeckApp() {
         </aside>
 
         <main className="min-w-0 px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:pb-6">
-          <header className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
-                {activeView}
-              </h1>
+          <header className="mobile-header-shell flex flex-col gap-4 p-4 md:border-b-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-0">
+            <div className="flex items-start justify-between gap-4 md:items-center">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-yellow-100/60 lg:hidden">
+                  HouseDeck
+                </p>
+                <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl md:mt-0 md:text-4xl">
+                  {activeView}
+                </h1>
+              </div>
+              <div className="mobile-header-pill shrink-0 rounded-full px-3 py-1.5 text-right lg:hidden">
+                <p className="max-w-[132px] truncate text-[11px] font-medium text-white/70">
+                  {session.user.email ?? "Signed in"}
+                </p>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-white/10 pt-4 md:border-t-0 md:pt-0">
               <p className="max-w-[220px] truncate text-xs text-white/45 sm:text-sm">
                 {session.user.email ?? "Signed in"}
               </p>
@@ -1086,9 +1096,9 @@ function LoginScreen({
         <div className="absolute bottom-10 right-[18%] size-[420px] rounded-full bg-yellow-400/10 blur-3xl" />
       </div>
 
-      <section className="relative grid min-h-screen items-center gap-8 px-4 py-8 lg:grid-cols-[1fr_440px] lg:px-10">
+      <section className="relative grid min-h-screen items-center gap-10 px-4 py-8 lg:grid-cols-[1.1fr_440px] lg:px-10">
         <div className="mx-auto w-full max-w-3xl">
-          <div className="relative mb-8 size-20 overflow-hidden rounded-lg border border-yellow-200/30 bg-black shadow-2xl shadow-yellow-900/20">
+          <div className="relative mb-8 size-20 overflow-hidden rounded-2xl border border-yellow-200/30 bg-black shadow-2xl shadow-yellow-900/20">
             <Image alt="HouseDeck lion logo" className="object-cover" fill priority sizes="80px" src="/brand/lion.png" />
           </div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-yellow-100/70">
@@ -1102,10 +1112,25 @@ function LoginScreen({
             student rosters, reports, and term archives.
           </p>
 
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
+            <div className="dashboard-chip rounded-2xl p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">Built for staff</p>
+              <p className="mt-2 text-sm text-white/75">Fast point entry, clear reporting, and simple house tracking.</p>
+            </div>
+            <div className="dashboard-chip rounded-2xl p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">Mobile ready</p>
+              <p className="mt-2 text-sm text-white/75">Optimized for quick classroom use from a phone.</p>
+            </div>
+            <div className="dashboard-chip rounded-2xl p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">Live history</p>
+              <p className="mt-2 text-sm text-white/75">Track points, review changes, and filter activity in seconds.</p>
+            </div>
+          </div>
+
           <div className="mt-8 grid gap-3 sm:grid-cols-4">
             {houses.map((house) => (
               <div
-                className="rounded-lg border bg-white/[0.045] p-4"
+                className="dashboard-chip rounded-2xl p-4"
                 key={house}
                 style={{ borderColor: houseStyles[house].ring }}
               >
@@ -1117,7 +1142,7 @@ function LoginScreen({
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-md rounded-lg border border-white/10 bg-white/[0.06] p-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
+        <div className="login-shell mx-auto w-full max-w-md p-5 sm:p-6">
           <div className="mb-5">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-yellow-100/65">
               Staff Login
@@ -1131,16 +1156,16 @@ function LoginScreen({
           </div>
 
           <form className="grid gap-3" onSubmit={onAuth}>
-            <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-black/20 p-1">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/20 p-1">
               <button
-                className={`rounded-md px-3 py-2 text-sm font-semibold ${authMode === "sign-in" ? "bg-white text-[#07080c]" : "text-white/65"}`}
+                className={`rounded-xl px-3 py-2.5 text-sm font-semibold ${authMode === "sign-in" ? "login-tab-active" : "text-white/65"}`}
                 onClick={() => setAuthMode("sign-in")}
                 type="button"
               >
                 Sign in
               </button>
               <button
-                className={`rounded-md px-3 py-2 text-sm font-semibold ${authMode === "sign-up" ? "bg-white text-[#07080c]" : "text-white/65"}`}
+                className={`rounded-xl px-3 py-2.5 text-sm font-semibold ${authMode === "sign-up" ? "login-tab-active" : "text-white/65"}`}
                 onClick={() => setAuthMode("sign-up")}
                 type="button"
               >
@@ -1182,7 +1207,7 @@ function LoginScreen({
             />
             </label>
 
-            <button className="button-primary mt-2 justify-center py-3" type="submit">
+            <button className="button-primary mt-2 justify-center rounded-xl py-3.5" type="submit">
               {authMode === "sign-in" ? "Sign In" : "Create Account"}
             </button>
           </form>

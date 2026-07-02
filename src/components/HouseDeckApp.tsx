@@ -1866,6 +1866,26 @@ function Admin({
     [sortedTransactions],
   );
   const filteredNetPoints = filteredPositivePoints + filteredDeductions;
+  const hasActiveHistoryFilters =
+    historyQuery.trim().length > 0 ||
+    historyHouseFilter !== "All" ||
+    historyDateFilter.length > 0 ||
+    historyDateRange !== "all" ||
+    historySort !== "newest";
+  const historyBreadcrumb = [
+    historyHouseFilter !== "All" ? historyHouseFilter : null,
+    historyQuery.trim() ? `Search: ${historyQuery.trim()}` : null,
+    historyDateFilter ? historyDateFilter : null,
+    !historyDateFilter && historyDateRange !== "all"
+      ? historyDateRange === "today"
+        ? "Today"
+        : historyDateRange === "week"
+          ? "This Week"
+          : "This Month"
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" / ");
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
@@ -1998,6 +2018,31 @@ function Admin({
       <div ref={historyPanelRef}>
       <Panel action={`${sortedTransactions.length} shown`} title="Transaction History">
         <div className="grid gap-3">
+          {hasActiveHistoryFilters ? (
+            <div className="flex flex-col gap-3 rounded-lg border border-yellow-200/15 bg-yellow-200/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-yellow-100/60">
+                  Filtered View
+                </p>
+                <p className="mt-1 text-sm text-yellow-50/85">
+                  {historyBreadcrumb || "Custom transaction filters are active."}
+                </p>
+              </div>
+              <button
+                className="button-secondary"
+                onClick={() => {
+                  setHistoryQuery("");
+                  setHistoryHouseFilter("All");
+                  setHistoryDateFilter("");
+                  setHistoryDateRange("all");
+                  setHistorySort("newest");
+                }}
+                type="button"
+              >
+                Back to Full Admin View
+              </button>
+            </div>
+          ) : null}
           <div className="grid gap-3 md:grid-cols-[1fr_180px_180px_180px]">
             <label className="grid gap-1 text-sm font-medium">
               Search

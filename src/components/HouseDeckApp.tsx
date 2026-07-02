@@ -1698,6 +1698,15 @@ function Admin({
       return b.date.localeCompare(a.date);
     });
   }, [filteredTransactions, historySort]);
+  const filteredPositivePoints = useMemo(
+    () => sortedTransactions.reduce((sum, transaction) => sum + Math.max(transaction.points, 0), 0),
+    [sortedTransactions],
+  );
+  const filteredDeductions = useMemo(
+    () => sortedTransactions.reduce((sum, transaction) => sum + Math.min(transaction.points, 0), 0),
+    [sortedTransactions],
+  );
+  const filteredNetPoints = filteredPositivePoints + filteredDeductions;
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
@@ -1920,6 +1929,12 @@ function Admin({
             >
               Clear Filters
             </button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric label="Shown" note="Current filter" value={sortedTransactions.length.toString()} />
+            <Metric label="Awarded" note="Positive points" value={filteredPositivePoints.toString()} />
+            <Metric label="Deductions" note="Negative points" value={filteredDeductions.toString()} />
+            <Metric label="Net" note="Combined total" value={filteredNetPoints.toString()} />
           </div>
           {sortedTransactions.length === 0 ? (
             <p className="text-sm text-white/55">No points have been recorded yet.</p>

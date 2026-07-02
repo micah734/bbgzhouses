@@ -1642,8 +1642,16 @@ function Admin({
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyHouseFilter, setHistoryHouseFilter] = useState<"All" | HouseName>("All");
   const [historyDateFilter, setHistoryDateFilter] = useState("");
+  const [historyDateRange, setHistoryDateRange] = useState<"all" | "today" | "week" | "month">("all");
   const normalizedHistoryQuery = historyQuery.trim().toLowerCase();
   const filteredTransactions = useMemo(() => {
+    const today = new Date();
+    const todayKey = today.toISOString().slice(0, 10);
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    const weekStartKey = weekStart.toISOString().slice(0, 10);
+    const monthStartKey = `${todayKey.slice(0, 7)}-01`;
+
     return transactions.filter((transaction) => {
       const student = students.find((item) => item.id === transaction.studentId);
       const subject = student
@@ -1667,9 +1675,14 @@ function Admin({
         transaction.house === historyHouseFilter ||
         student?.house === historyHouseFilter;
       const matchesDate = !historyDateFilter || transaction.date === historyDateFilter;
-      return matchesQuery && matchesHouse && matchesDate;
+      const matchesRange =
+        historyDateRange === "all" ||
+        (historyDateRange === "today" && transaction.date === todayKey) ||
+        (historyDateRange === "week" && transaction.date >= weekStartKey && transaction.date <= todayKey) ||
+        (historyDateRange === "month" && transaction.date >= monthStartKey && transaction.date <= todayKey);
+      return matchesQuery && matchesHouse && matchesDate && matchesRange;
     });
-  }, [historyDateFilter, historyHouseFilter, normalizedHistoryQuery, students, transactions]);
+  }, [historyDateFilter, historyDateRange, historyHouseFilter, normalizedHistoryQuery, students, transactions]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
@@ -1830,19 +1843,42 @@ function Admin({
               Date
               <input
                 className="field"
-                onChange={(event) => setHistoryDateFilter(event.target.value)}
+                onChange={(event) => {
+                  setHistoryDateFilter(event.target.value);
+                  if (event.target.value) {
+                    setHistoryDateRange("all");
+                  }
+                }}
                 type="date"
                 value={historyDateFilter}
               />
             </label>
           </div>
           <div className="flex flex-wrap gap-2">
+            {[
+              { label: "Today", value: "today" as const },
+              { label: "This Week", value: "week" as const },
+              { label: "This Month", value: "month" as const },
+            ].map((range) => (
+              <button
+                className={historyDateRange === range.value ? "button-primary" : "button-secondary"}
+                key={range.value}
+                onClick={() => {
+                  setHistoryDateRange(range.value);
+                  setHistoryDateFilter("");
+                }}
+                type="button"
+              >
+                {range.label}
+              </button>
+            ))}
             <button
               className="button-secondary"
               onClick={() => {
                 setHistoryQuery("");
                 setHistoryHouseFilter("All");
                 setHistoryDateFilter("");
+                setHistoryDateRange("all");
               }}
               type="button"
             >

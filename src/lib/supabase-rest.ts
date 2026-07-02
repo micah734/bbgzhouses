@@ -461,6 +461,29 @@ export async function awardSupabaseHousePoints({
   return mapTransaction(rows[0]);
 }
 
+export async function undoSupabaseTransaction(accessToken: string, transactionId: string) {
+  const response = await fetch(`/api/transactions/${transactionId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    method: "DELETE",
+  });
+  const payload = await readOptionalJsonResponse<{ error?: string }>(response);
+
+  if (!response.ok) {
+    const message =
+      payload && typeof payload.error === "string" ? payload.error : "Could not undo that transaction.";
+    if (
+      response.status === 401 ||
+      message.includes("JWT expired") ||
+      message.includes("PGRST303")
+    ) {
+      throw new Error("SESSION_EXPIRED");
+    }
+    throw new Error(message);
+  }
+}
+
 export async function resetSupabasePoints(accessToken: string) {
   await restFetch("/hd_students?active=eq.true", accessToken, {
     body: JSON.stringify({ points: 0 }),

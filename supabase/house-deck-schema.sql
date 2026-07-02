@@ -62,6 +62,9 @@ alter table public.hd_point_transactions
   add column if not exists house text;
 
 alter table public.hd_point_transactions
+  alter column student_id drop not null;
+
+alter table public.hd_point_transactions
   drop constraint if exists hd_point_transactions_house_check;
 
 alter table public.hd_point_transactions

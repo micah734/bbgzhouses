@@ -29,6 +29,7 @@ import {
   signInWithPassword,
   signUpWithPassword,
   storeSession,
+  undoSupabaseTransaction,
   updateSupabaseStudent,
 } from "@/lib/supabase-rest";
 
@@ -552,6 +553,34 @@ export function HouseDeckApp() {
     }
   };
 
+  const undoTransaction = async (transaction: Transaction) => {
+    try {
+      if (session && supabaseReady) {
+        await undoSupabaseTransaction(session.access_token, transaction.id);
+      }
+
+      if (transaction.studentId) {
+        setStudents((current) =>
+          current.map((student) =>
+            student.id === transaction.studentId
+              ? { ...student, points: student.points - transaction.points }
+              : student,
+          ),
+        );
+      }
+
+      setTransactions((current) => current.filter((item) => item.id !== transaction.id));
+      notify("Transaction undone.");
+    } catch (error) {
+      if (isSupabaseSessionExpiredError(error)) {
+        expireSession();
+        notify("Your sign-in expired. Please sign in again before undoing transactions.");
+        return;
+      }
+      notify(error instanceof Error ? error.message : "Could not undo transaction.");
+    }
+  };
+
   const archiveAndReset = async () => {
     const snapshot = { students, transactions, archivedAt: new Date().toISOString() };
 
@@ -759,6 +788,8 @@ export function HouseDeckApp() {
                 isAdmin={isAdmin}
                 mascotImages={mascotImages}
                 pendingProfiles={pendingProfiles}
+                students={students}
+                transactions={transactions}
                 onAwardHousePoints={awardHousePoints}
                 onApproveProfile={approveProfile}
                 onArchive={archiveAndReset}
@@ -768,6 +799,7 @@ export function HouseDeckApp() {
                 }}
                 onChangeMascot={saveMascotImage}
                 onReset={resetPoints}
+                onUndoTransaction={undoTransaction}
                 setHousePointDrafts={setHousePointDrafts}
               />
             )}
@@ -1478,12 +1510,15 @@ function Admin({
   isAdmin,
   mascotImages,
   pendingProfiles,
+  students,
+  transactions,
   onAwardHousePoints,
   onApproveProfile,
   onArchive,
   onBackup,
   onChangeMascot,
   onReset,
+  onUndoTransaction,
   setHousePointDrafts,
 }: {
   houseTotals: HouseTotal[];
@@ -1491,12 +1526,15 @@ function Admin({
   isAdmin: boolean;
   mascotImages: Record<HouseName, string | null>;
   pendingProfiles: SupabaseProfile[];
+  students: Student[];
+  transactions: Transaction[];
   onAwardHousePoints: (house: HouseName) => void;
   onApproveProfile: (profileId: string, role: SupabaseRole) => void;
   onArchive: () => void;
   onBackup: () => void;
   onChangeMascot: (house: HouseName, imageDataUrl: string | null) => void;
   onReset: () => void;
+  onUndoTransaction: (transaction: Transaction) => void;
   setHousePointDrafts: (value: Record<HouseName, string> | ((current: Record<HouseName, string>) => Record<HouseName, string>)) => void;
 }) {
   return (
@@ -1623,6 +1661,48 @@ function Admin({
                 </div>
               </div>
             ))
+          )}
+        </div>
+      </Panel>
+      <Panel action={`${transactions.length} logged`} title="Transaction History">
+        <div className="grid gap-3">
+          {transactions.length === 0 ? (
+            <p className="text-sm text-white/55">No points have been recorded yet.</p>
+          ) : (
+            transactions.slice(0, 12).map((transaction) => {
+              const student = students.find((item) => item.id === transaction.studentId);
+              const subject = student
+                ? `${student.firstName} ${student.lastName}`
+                : transaction.house
+                  ? `${transaction.house} House`
+                  : "House";
+
+              return (
+                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3" key={transaction.id}>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{subject}</p>
+                        <span className="font-mono text-sm text-white/60">{transaction.points > 0 ? `+${transaction.points}` : transaction.points}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-white/55">
+                        {transaction.category} by {transaction.teacher}
+                      </p>
+                      <p className="mt-1 text-sm text-white/45">
+                        {transaction.reason} • {transaction.date}
+                      </p>
+                    </div>
+                    <button
+                      className="button-secondary"
+                      onClick={() => onUndoTransaction(transaction)}
+                      type="button"
+                    >
+                      Undo
+                    </button>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       </Panel>

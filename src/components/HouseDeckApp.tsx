@@ -1023,7 +1023,17 @@ function Dashboard({
           </div>
         </Panel>
         <Panel action="Leaderboard" title="Top Students">
-          <StudentList students={students.slice(0, 6)} />
+          <StudentList
+            onSelectStudent={(student) =>
+              onOpenFilteredTransactions({
+                dateFilter: "",
+                dateRange: "all",
+                houseFilter: student.house,
+                query: `${student.firstName} ${student.lastName}`,
+              })
+            }
+            students={students.slice(0, 6)}
+          />
         </Panel>
       </section>
 
@@ -2404,11 +2414,22 @@ function HouseRow({
   );
 }
 
-function StudentList({ students }: { students: Student[] }) {
+function StudentList({
+  onSelectStudent,
+  students,
+}: {
+  onSelectStudent?: (student: Student) => void;
+  students: Student[];
+}) {
   return (
     <div className="grid gap-2">
       {students.map((student, index) => (
-        <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 p-3" key={student.id}>
+        <button
+          className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 p-3 text-left transition hover:border-white/20 hover:bg-black/30"
+          key={student.id}
+          onClick={() => onSelectStudent?.(student)}
+          type="button"
+        >
           <div className="flex items-center gap-3">
             <span className="grid size-8 place-items-center rounded-lg bg-white/10 font-mono text-xs">{index + 1}</span>
             <div>
@@ -2417,7 +2438,7 @@ function StudentList({ students }: { students: Student[] }) {
             </div>
           </div>
           <span className="font-mono font-semibold">{student.points}</span>
-        </div>
+        </button>
       ))}
     </div>
   );

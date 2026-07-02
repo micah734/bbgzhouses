@@ -1641,6 +1641,7 @@ function Admin({
 }) {
   const [historyQuery, setHistoryQuery] = useState("");
   const [historyHouseFilter, setHistoryHouseFilter] = useState<"All" | HouseName>("All");
+  const [historyDateFilter, setHistoryDateFilter] = useState("");
   const normalizedHistoryQuery = historyQuery.trim().toLowerCase();
   const filteredTransactions = useMemo(() => {
     return transactions.filter((transaction) => {
@@ -1665,9 +1666,10 @@ function Admin({
         historyHouseFilter === "All" ||
         transaction.house === historyHouseFilter ||
         student?.house === historyHouseFilter;
-      return matchesQuery && matchesHouse;
+      const matchesDate = !historyDateFilter || transaction.date === historyDateFilter;
+      return matchesQuery && matchesHouse && matchesDate;
     });
-  }, [historyHouseFilter, normalizedHistoryQuery, students, transactions]);
+  }, [historyDateFilter, historyHouseFilter, normalizedHistoryQuery, students, transactions]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
@@ -1799,7 +1801,7 @@ function Admin({
       </Panel>
       <Panel action={`${filteredTransactions.length} shown`} title="Transaction History">
         <div className="grid gap-3">
-          <div className="grid gap-3 md:grid-cols-[1fr_180px]">
+          <div className="grid gap-3 md:grid-cols-[1fr_180px_180px]">
             <label className="grid gap-1 text-sm font-medium">
               Search
               <input
@@ -1824,6 +1826,28 @@ function Admin({
                 ))}
               </select>
             </label>
+            <label className="grid gap-1 text-sm font-medium">
+              Date
+              <input
+                className="field"
+                onChange={(event) => setHistoryDateFilter(event.target.value)}
+                type="date"
+                value={historyDateFilter}
+              />
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="button-secondary"
+              onClick={() => {
+                setHistoryQuery("");
+                setHistoryHouseFilter("All");
+                setHistoryDateFilter("");
+              }}
+              type="button"
+            >
+              Clear Filters
+            </button>
           </div>
           {filteredTransactions.length === 0 ? (
             <p className="text-sm text-white/55">No points have been recorded yet.</p>

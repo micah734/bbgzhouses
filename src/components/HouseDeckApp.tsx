@@ -887,6 +887,36 @@ function Dashboard({
   students: Student[];
   transactions: Transaction[];
 }) {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayTransactions = useMemo(
+    () => transactions.filter((transaction) => transaction.date === todayKey),
+    [todayKey, transactions],
+  );
+  const todayHouseTotals = useMemo(
+    () =>
+      houses.map((house) => ({
+        house,
+        points: todayTransactions
+          .filter((transaction) => {
+            if (transaction.house === house) return true;
+            const student = students.find((item) => item.id === transaction.studentId);
+            return student?.house === house;
+          })
+          .reduce((sum, transaction) => sum + transaction.points, 0),
+      })),
+    [students, todayTransactions],
+  );
+  const todayTeacherTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const transaction of todayTransactions) {
+      totals.set(transaction.teacher, (totals.get(transaction.teacher) ?? 0) + transaction.points);
+    }
+
+    return [...totals.entries()]
+      .map(([teacher, points]) => ({ teacher, points }))
+      .sort((a, b) => b.points - a.points);
+  }, [todayTransactions]);
+
   return (
     <div className="grid gap-5">
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -894,6 +924,39 @@ function Dashboard({
         <Metric label="Transactions" note="This term" value={transactions.length.toString()} />
         <Metric label="Leading House" note={`${leadingHouse.points} points`} value={leadingHouse.house} />
         <Metric label="Term Status" note="Ready for classrooms" value="Live" />
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-2">
+        <Panel action={todayKey} title="Today's House Totals">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {todayHouseTotals.map((entry) => (
+              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4" key={entry.house}>
+                <div className="flex items-center justify-between gap-3">
+                  <HouseBadge house={entry.house} />
+                  <span className="font-mono text-lg font-semibold">
+                    {entry.points > 0 ? `+${entry.points}` : entry.points}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel action={`${todayTeacherTotals.length} active`} title="Today's Teacher Totals">
+          <div className="grid gap-3">
+            {todayTeacherTotals.length === 0 ? (
+              <p className="text-sm text-white/55">No points have been recorded yet today.</p>
+            ) : (
+              todayTeacherTotals.slice(0, 6).map((entry) => (
+                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.04] p-4" key={entry.teacher}>
+                  <p className="font-medium">{entry.teacher}</p>
+                  <span className="font-mono text-lg font-semibold">
+                    {entry.points > 0 ? `+${entry.points}` : entry.points}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </Panel>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">

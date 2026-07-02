@@ -1643,6 +1643,7 @@ function Admin({
   const [historyHouseFilter, setHistoryHouseFilter] = useState<"All" | HouseName>("All");
   const [historyDateFilter, setHistoryDateFilter] = useState("");
   const [historyDateRange, setHistoryDateRange] = useState<"all" | "today" | "week" | "month">("all");
+  const [historySort, setHistorySort] = useState<"newest" | "oldest" | "points-high" | "points-low">("newest");
   const normalizedHistoryQuery = historyQuery.trim().toLowerCase();
   const filteredTransactions = useMemo(() => {
     const today = new Date();
@@ -1683,6 +1684,20 @@ function Admin({
       return matchesQuery && matchesHouse && matchesDate && matchesRange;
     });
   }, [historyDateFilter, historyDateRange, historyHouseFilter, normalizedHistoryQuery, students, transactions]);
+  const sortedTransactions = useMemo(() => {
+    return [...filteredTransactions].sort((a, b) => {
+      if (historySort === "oldest") {
+        return a.date.localeCompare(b.date);
+      }
+      if (historySort === "points-high") {
+        return b.points - a.points;
+      }
+      if (historySort === "points-low") {
+        return a.points - b.points;
+      }
+      return b.date.localeCompare(a.date);
+    });
+  }, [filteredTransactions, historySort]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
@@ -1812,9 +1827,9 @@ function Admin({
           )}
         </div>
       </Panel>
-      <Panel action={`${filteredTransactions.length} shown`} title="Transaction History">
+      <Panel action={`${sortedTransactions.length} shown`} title="Transaction History">
         <div className="grid gap-3">
-          <div className="grid gap-3 md:grid-cols-[1fr_180px_180px]">
+          <div className="grid gap-3 md:grid-cols-[1fr_180px_180px_180px]">
             <label className="grid gap-1 text-sm font-medium">
               Search
               <input
@@ -1853,6 +1868,19 @@ function Admin({
                 value={historyDateFilter}
               />
             </label>
+            <label className="grid gap-1 text-sm font-medium">
+              Sort
+              <select
+                className="field"
+                onChange={(event) => setHistorySort(event.target.value as "newest" | "oldest" | "points-high" | "points-low")}
+                value={historySort}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="points-high">Points high to low</option>
+                <option value="points-low">Points low to high</option>
+              </select>
+            </label>
           </div>
           <div className="flex flex-wrap gap-2">
             {[
@@ -1874,21 +1902,29 @@ function Admin({
             ))}
             <button
               className="button-secondary"
+              onClick={() => downloadCsv("housedeck-filtered-transactions.csv", transactionsToCsv(sortedTransactions, students))}
+              type="button"
+            >
+              Export Filtered
+            </button>
+            <button
+              className="button-secondary"
               onClick={() => {
                 setHistoryQuery("");
                 setHistoryHouseFilter("All");
                 setHistoryDateFilter("");
                 setHistoryDateRange("all");
+                setHistorySort("newest");
               }}
               type="button"
             >
               Clear Filters
             </button>
           </div>
-          {filteredTransactions.length === 0 ? (
+          {sortedTransactions.length === 0 ? (
             <p className="text-sm text-white/55">No points have been recorded yet.</p>
           ) : (
-            filteredTransactions.slice(0, 20).map((transaction) => {
+            sortedTransactions.slice(0, 20).map((transaction) => {
               const student = students.find((item) => item.id === transaction.studentId);
               const subject = student
                 ? `${student.firstName} ${student.lastName}`

@@ -52,6 +52,13 @@ type NewStudentDraft = {
   house: HouseName;
 };
 
+type AdminHistoryPreset = {
+  dateFilter: string;
+  dateRange: "all" | "today" | "week" | "month";
+  houseFilter: "All" | HouseName;
+  query: string;
+};
+
 const views: View[] = [
   "Dashboard",
   "Students",
@@ -110,6 +117,7 @@ export function HouseDeckApp() {
   const [isAwardingPoints, setIsAwardingPoints] = useState(false);
   const [isUndoingTransactionId, setIsUndoingTransactionId] = useState<string | null>(null);
   const [isAwardingHouse, setIsAwardingHouse] = useState<HouseName | null>(null);
+  const [adminHistoryPreset, setAdminHistoryPreset] = useState<AdminHistoryPreset | null>(null);
   const [housePointDrafts, setHousePointDrafts] = useState<Record<HouseName, string>>({
     Red: "10",
     Blue: "10",
@@ -620,6 +628,11 @@ export function HouseDeckApp() {
     }
   };
 
+  const openFilteredTransactions = (preset: AdminHistoryPreset) => {
+    setAdminHistoryPreset(preset);
+    setActiveView("Admin");
+  };
+
   if (!session) {
     return (
       <>
@@ -757,6 +770,7 @@ export function HouseDeckApp() {
                 houseTotals={houseTotals}
                 leadingHouse={leadingHouse}
                 mascotImages={mascotImages}
+                onOpenFilteredTransactions={openFilteredTransactions}
                 students={sortedStudents}
                 transactions={transactions}
               />
@@ -815,6 +829,7 @@ export function HouseDeckApp() {
                 pendingProfiles={pendingProfiles}
                 students={students}
                 transactions={transactions}
+                historyPreset={adminHistoryPreset}
                 isAwardingHouse={isAwardingHouse}
                 isUndoingTransactionId={isUndoingTransactionId}
                 onAwardHousePoints={awardHousePoints}
@@ -825,6 +840,7 @@ export function HouseDeckApp() {
                   notify("Backup downloaded.");
                 }}
                 onChangeMascot={saveMascotImage}
+                onHistoryPresetConsumed={() => setAdminHistoryPreset(null)}
                 onReset={resetPoints}
                 onUndoTransaction={undoTransaction}
                 setHousePointDrafts={setHousePointDrafts}
@@ -878,12 +894,14 @@ function Dashboard({
   houseTotals,
   leadingHouse,
   mascotImages,
+  onOpenFilteredTransactions,
   students,
   transactions,
 }: {
   houseTotals: HouseTotal[];
   leadingHouse: HouseTotal;
   mascotImages: Record<HouseName, string | null>;
+  onOpenFilteredTransactions: (preset: AdminHistoryPreset) => void;
   students: Student[];
   transactions: Transaction[];
 }) {
@@ -930,14 +948,26 @@ function Dashboard({
         <Panel action={todayKey} title="Today's House Totals">
           <div className="grid gap-3 sm:grid-cols-2">
             {todayHouseTotals.map((entry) => (
-              <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4" key={entry.house}>
+              <button
+                className="rounded-lg border border-white/10 bg-white/[0.04] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.07]"
+                key={entry.house}
+                onClick={() =>
+                  onOpenFilteredTransactions({
+                    dateFilter: todayKey,
+                    dateRange: "all",
+                    houseFilter: entry.house,
+                    query: "",
+                  })
+                }
+                type="button"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <HouseBadge house={entry.house} />
                   <span className="font-mono text-lg font-semibold">
                     {entry.points > 0 ? `+${entry.points}` : entry.points}
                   </span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </Panel>
@@ -947,12 +977,24 @@ function Dashboard({
               <p className="text-sm text-white/55">No points have been recorded yet today.</p>
             ) : (
               todayTeacherTotals.slice(0, 6).map((entry) => (
-                <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.04] p-4" key={entry.teacher}>
+                <button
+                  className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.04] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.07]"
+                  key={entry.teacher}
+                  onClick={() =>
+                    onOpenFilteredTransactions({
+                      dateFilter: todayKey,
+                      dateRange: "all",
+                      houseFilter: "All",
+                      query: entry.teacher,
+                    })
+                  }
+                  type="button"
+                >
                   <p className="font-medium">{entry.teacher}</p>
                   <span className="font-mono text-lg font-semibold">
                     {entry.points > 0 ? `+${entry.points}` : entry.points}
                   </span>
-                </div>
+                </button>
               ))
             )}
           </div>
@@ -1673,6 +1715,7 @@ function Admin({
   pendingProfiles,
   students,
   transactions,
+  historyPreset,
   isAwardingHouse,
   isUndoingTransactionId,
   onAwardHousePoints,
@@ -1680,6 +1723,7 @@ function Admin({
   onArchive,
   onBackup,
   onChangeMascot,
+  onHistoryPresetConsumed,
   onReset,
   onUndoTransaction,
   setHousePointDrafts,
@@ -1691,6 +1735,7 @@ function Admin({
   pendingProfiles: SupabaseProfile[];
   students: Student[];
   transactions: Transaction[];
+  historyPreset: AdminHistoryPreset | null;
   isAwardingHouse: HouseName | null;
   isUndoingTransactionId: string | null;
   onAwardHousePoints: (house: HouseName) => void;
@@ -1698,6 +1743,7 @@ function Admin({
   onArchive: () => void;
   onBackup: () => void;
   onChangeMascot: (house: HouseName, imageDataUrl: string | null) => void;
+  onHistoryPresetConsumed: () => void;
   onReset: () => void;
   onUndoTransaction: (transaction: Transaction) => void;
   setHousePointDrafts: (value: Record<HouseName, string> | ((current: Record<HouseName, string>) => Record<HouseName, string>)) => void;
@@ -1707,6 +1753,22 @@ function Admin({
   const [historyDateFilter, setHistoryDateFilter] = useState("");
   const [historyDateRange, setHistoryDateRange] = useState<"all" | "today" | "week" | "month">("all");
   const [historySort, setHistorySort] = useState<"newest" | "oldest" | "points-high" | "points-low">("newest");
+  const historyPanelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!historyPreset) return;
+
+    setHistoryQuery(historyPreset.query);
+    setHistoryHouseFilter(historyPreset.houseFilter);
+    setHistoryDateFilter(historyPreset.dateFilter);
+    setHistoryDateRange(historyPreset.dateRange);
+    setHistorySort("newest");
+    window.requestAnimationFrame(() => {
+      historyPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    onHistoryPresetConsumed();
+  }, [historyPreset, onHistoryPresetConsumed]);
+
   const normalizedHistoryQuery = historyQuery.trim().toLowerCase();
   const filteredTransactions = useMemo(() => {
     const today = new Date();
@@ -1899,6 +1961,7 @@ function Admin({
           )}
         </div>
       </Panel>
+      <div ref={historyPanelRef}>
       <Panel action={`${sortedTransactions.length} shown`} title="Transaction History">
         <div className="grid gap-3">
           <div className="grid gap-3 md:grid-cols-[1fr_180px_180px_180px]">
@@ -2040,6 +2103,7 @@ function Admin({
           )}
         </div>
       </Panel>
+      </div>
     </div>
   );
 }

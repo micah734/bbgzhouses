@@ -1639,6 +1639,36 @@ function Admin({
   onUndoTransaction: (transaction: Transaction) => void;
   setHousePointDrafts: (value: Record<HouseName, string> | ((current: Record<HouseName, string>) => Record<HouseName, string>)) => void;
 }) {
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [historyHouseFilter, setHistoryHouseFilter] = useState<"All" | HouseName>("All");
+  const normalizedHistoryQuery = historyQuery.trim().toLowerCase();
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter((transaction) => {
+      const student = students.find((item) => item.id === transaction.studentId);
+      const subject = student
+        ? `${student.firstName} ${student.lastName}`
+        : transaction.house
+          ? `${transaction.house} House`
+          : "House";
+      const teacher = transaction.teacher ?? "";
+      const haystack = [
+        subject,
+        teacher,
+        transaction.category,
+        transaction.reason,
+        transaction.date,
+      ]
+        .join(" ")
+        .toLowerCase();
+      const matchesQuery = !normalizedHistoryQuery || haystack.includes(normalizedHistoryQuery);
+      const matchesHouse =
+        historyHouseFilter === "All" ||
+        transaction.house === historyHouseFilter ||
+        student?.house === historyHouseFilter;
+      return matchesQuery && matchesHouse;
+    });
+  }, [historyHouseFilter, normalizedHistoryQuery, students, transactions]);
+
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
       <Panel action="Admin only" title="Settings">
@@ -1767,12 +1797,38 @@ function Admin({
           )}
         </div>
       </Panel>
-      <Panel action={`${transactions.length} logged`} title="Transaction History">
+      <Panel action={`${filteredTransactions.length} shown`} title="Transaction History">
         <div className="grid gap-3">
-          {transactions.length === 0 ? (
+          <div className="grid gap-3 md:grid-cols-[1fr_180px]">
+            <label className="grid gap-1 text-sm font-medium">
+              Search
+              <input
+                className="field"
+                onChange={(event) => setHistoryQuery(event.target.value)}
+                placeholder="Student, house, teacher, reason"
+                value={historyQuery}
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-medium">
+              House
+              <select
+                className="field"
+                onChange={(event) => setHistoryHouseFilter(event.target.value as "All" | HouseName)}
+                value={historyHouseFilter}
+              >
+                <option value="All">All houses</option>
+                {houses.map((house) => (
+                  <option key={house} value={house}>
+                    {house}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {filteredTransactions.length === 0 ? (
             <p className="text-sm text-white/55">No points have been recorded yet.</p>
           ) : (
-            transactions.slice(0, 12).map((transaction) => {
+            filteredTransactions.slice(0, 20).map((transaction) => {
               const student = students.find((item) => item.id === transaction.studentId);
               const subject = student
                 ? `${student.firstName} ${student.lastName}`

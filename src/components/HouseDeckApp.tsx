@@ -41,6 +41,8 @@ type View =
   | "Reports"
   | "Admin";
 
+type MobileNavIconName = "home" | "students" | "assign" | "scoreboard" | "reports" | "admin" | "signout";
+
 type Modal = "addStudent" | "editStudent" | "importCsv" | null;
 
 type NewStudentDraft = {
@@ -75,6 +77,15 @@ const mobileViewLabels: Record<View, string> = {
   Scoreboard: "Board",
   Reports: "Reports",
   Admin: "Admin",
+};
+
+const mobileViewIcons: Record<View, Exclude<MobileNavIconName, "signout">> = {
+  Dashboard: "home",
+  Students: "students",
+  Assignment: "assign",
+  Scoreboard: "scoreboard",
+  Reports: "reports",
+  Admin: "admin",
 };
 
 const houses: HouseName[] = ["Red", "Blue", "Yellow", "Green"];
@@ -871,7 +882,7 @@ export function HouseDeckApp() {
               onClick={() => setActiveView(view)}
               type="button"
             >
-              <span className="mobile-nav-dot" aria-hidden="true" />
+              <MobileNavIcon icon={mobileViewIcons[view]} />
               <span>{mobileViewLabels[view]}</span>
             </button>
           ))}
@@ -880,7 +891,7 @@ export function HouseDeckApp() {
             onClick={handleSignOut}
             type="button"
           >
-            <span className="mobile-nav-dot" aria-hidden="true" />
+            <MobileNavIcon icon="signout" />
             <span>Sign Out</span>
           </button>
         </nav>
@@ -2429,6 +2440,28 @@ function Toast({ message }: { message: string }) {
       </p>
       <p className="mt-1 text-white/78">{message}</p>
     </div>
+  );
+}
+
+function MobileNavIcon({
+  icon,
+}: {
+  icon: MobileNavIconName;
+}) {
+  const pathByIcon = {
+    home: "M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",
+    students: "M8 11a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm8 1a3 3 0 1 0-3-3 3 3 0 0 0 3 3ZM3 20a5 5 0 0 1 10 0Zm9 0a4 4 0 0 1 8 0Z",
+    assign: "M5 5h14v4H5zM5 11h8v8H5zM15 13l2 2 4-4",
+    scoreboard: "M5 19V9m7 10V5m7 14v-7",
+    reports: "M6 4h9l3 3v13H6zM9 12h6M9 16h6M9 8h3",
+    admin: "M12 3l2.2 2.1 3-.6.9 2.9 2.7 1.4-1.4 2.7 1.4 2.7-2.7 1.4-.9 2.9-3-.6L12 21l-2.2-2.1-3 .6-.9-2.9-2.7-1.4 1.4-2.7-1.4-2.7 2.7-1.4.9-2.9 3 .6ZM12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z",
+    signout: "M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4m4-4 4-4m0 0-4-4m4 4H9",
+  } satisfies Record<MobileNavIconName, string>;
+
+  return (
+    <svg aria-hidden="true" className="mobile-nav-icon" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">
+      <path d={pathByIcon[icon]} />
+    </svg>
   );
 }
 

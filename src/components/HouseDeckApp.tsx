@@ -2394,12 +2394,34 @@ function ModalHeader({ onClose, title }: { onClose: () => void; title: string })
 function Toast({ message }: { message: string }) {
   if (!message) return null;
 
+  const tone = /could not|failed|expired|not found|missing|enter |choose |paste /i.test(message)
+    ? "error"
+    : /saved|signed|added|updated|approved|imported|undone|reset|archive|downloaded|assigned/i.test(message)
+      ? "success"
+      : "neutral";
+  const accentClass =
+    tone === "error"
+      ? "text-red-300"
+      : tone === "success"
+        ? "text-emerald-300"
+        : "text-white/70";
+  const borderClass =
+    tone === "error"
+      ? "toast-error"
+      : tone === "success"
+        ? "toast-success"
+        : "toast-neutral";
+
   return (
     <div
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-40 rounded-lg border border-white/10 bg-[#0b0d12]/95 px-4 py-3 text-sm font-medium text-white shadow-2xl shadow-black/40"
+      className={`toast-shell fixed bottom-24 right-4 z-40 max-w-[min(92vw,420px)] px-4 py-3 pl-7 text-sm text-white shadow-2xl shadow-black/40 lg:bottom-4 ${borderClass}`}
     >
-      {message}
+      <span aria-hidden="true" className={`toast-accent ${accentClass}`} />
+      <p className="font-semibold">
+        {tone === "error" ? "Something needs attention" : tone === "success" ? "All set" : "Heads up"}
+      </p>
+      <p className="mt-1 text-white/78">{message}</p>
     </div>
   );
 }

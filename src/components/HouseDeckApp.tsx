@@ -88,6 +88,8 @@ const mobileViewIcons: Record<View, Exclude<MobileNavIconName, "signout">> = {
   Admin: "admin",
 };
 
+const mobilePrimaryViews: View[] = ["Dashboard", "Students"];
+
 const houses: HouseName[] = ["Red", "Blue", "Yellow", "Green"];
 const mascotStorageKey = "housedeck.mascots";
 
@@ -114,6 +116,7 @@ export function HouseDeckApp() {
   const [csvDraft, setCsvDraft] = useState("");
   const [assignmentNames, setAssignmentNames] = useState("");
   const [toast, setToast] = useState("");
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [syncLabel, setSyncLabel] = useState("Syncing live data");
   const [session, setSession] = useState<SupabaseSession | null>(null);
@@ -151,6 +154,10 @@ export function HouseDeckApp() {
             (view) => view !== "Assignment" && view !== "Reports" && view !== "Admin",
           ),
     [isAdmin],
+  );
+  const mobileOverflowViews = useMemo(
+    () => visibleViews.filter((view) => !mobilePrimaryViews.includes(view)),
+    [visibleViews],
   );
 
   const sortedStudents = useMemo(
@@ -264,6 +271,10 @@ export function HouseDeckApp() {
       setActiveView("Dashboard");
     }
   }, [activeView, isAdmin]);
+
+  useEffect(() => {
+    setMobileMoreOpen(false);
+  }, [activeView]);
 
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -873,13 +884,35 @@ export function HouseDeckApp() {
       </div>
 
       <div className="mobile-nav-shell lg:hidden">
+        {mobileMoreOpen ? (
+          <div aria-label="More navigation options" className="mobile-more-sheet" role="dialog">
+            {mobileOverflowViews.map((view) => (
+              <button
+                aria-current={activeView === view ? "page" : undefined}
+                className={`mobile-more-item ${activeView === view ? "mobile-more-item-active" : ""}`}
+                key={view}
+                onClick={() => {
+                  setActiveView(view);
+                  setMobileMoreOpen(false);
+                }}
+                type="button"
+              >
+                <MobileNavIcon icon={mobileViewIcons[view]} />
+                <span>{mobileViewLabels[view]}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <nav aria-label="Mobile navigation" className="mobile-nav">
-          {visibleViews.map((view) => (
+          {mobilePrimaryViews.map((view) => (
             <button
               aria-current={activeView === view ? "page" : undefined}
               key={view}
               className={`mobile-nav-item ${activeView === view ? "mobile-nav-item-active" : ""}`}
-              onClick={() => setActiveView(view)}
+              onClick={() => {
+                setActiveView(view);
+                setMobileMoreOpen(false);
+              }}
               type="button"
             >
               <MobileNavIcon icon={mobileViewIcons[view]} />
@@ -887,8 +920,21 @@ export function HouseDeckApp() {
             </button>
           ))}
           <button
+            aria-current={mobileOverflowViews.includes(activeView) ? "page" : undefined}
+            aria-expanded={mobileMoreOpen}
+            className={`mobile-nav-item ${mobileMoreOpen || mobileOverflowViews.includes(activeView) ? "mobile-nav-item-active" : ""}`}
+            onClick={() => setMobileMoreOpen((current) => !current)}
+            type="button"
+          >
+            <MobileNavIcon icon="more" />
+            <span>More</span>
+          </button>
+          <button
             className="mobile-nav-item"
-            onClick={handleSignOut}
+            onClick={() => {
+              setMobileMoreOpen(false);
+              handleSignOut();
+            }}
             type="button"
           >
             <MobileNavIcon icon="signout" />
@@ -2446,7 +2492,7 @@ function Toast({ message }: { message: string }) {
 function MobileNavIcon({
   icon,
 }: {
-  icon: MobileNavIconName;
+  icon: MobileNavIconName | "more";
 }) {
   const pathByIcon = {
     home: "M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",
@@ -2455,8 +2501,9 @@ function MobileNavIcon({
     scoreboard: "M5 19V9m7 10V5m7 14v-7",
     reports: "M6 4h9l3 3v13H6zM9 12h6M9 16h6M9 8h3",
     admin: "M12 3l2.2 2.1 3-.6.9 2.9 2.7 1.4-1.4 2.7 1.4 2.7-2.7 1.4-.9 2.9-3-.6L12 21l-2.2-2.1-3 .6-.9-2.9-2.7-1.4 1.4-2.7-1.4-2.7 2.7-1.4.9-2.9 3 .6ZM12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z",
+    more: "M6 12h.01M12 12h.01M18 12h.01",
     signout: "M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4m4-4 4-4m0 0-4-4m4 4H9",
-  } satisfies Record<MobileNavIconName, string>;
+  } satisfies Record<MobileNavIconName | "more", string>;
 
   return (
     <svg aria-hidden="true" className="mobile-nav-icon" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24">

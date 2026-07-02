@@ -61,6 +61,15 @@ const views: View[] = [
   "Admin",
 ];
 
+const mobileViewLabels: Record<View, string> = {
+  Dashboard: "Home",
+  Students: "Students",
+  Assignment: "Assign",
+  Scoreboard: "Board",
+  Reports: "Reports",
+  Admin: "Admin",
+};
+
 const houses: HouseName[] = ["Red", "Blue", "Yellow", "Green"];
 const mascotStorageKey = "housedeck.mascots";
 
@@ -98,6 +107,9 @@ export function HouseDeckApp() {
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
+  const [isAwardingPoints, setIsAwardingPoints] = useState(false);
+  const [isUndoingTransactionId, setIsUndoingTransactionId] = useState<string | null>(null);
+  const [isAwardingHouse, setIsAwardingHouse] = useState<HouseName | null>(null);
   const [housePointDrafts, setHousePointDrafts] = useState<Record<HouseName, string>>({
     Red: "10",
     Blue: "10",
@@ -414,8 +426,9 @@ export function HouseDeckApp() {
   };
 
   const awardPoints = async () => {
-    if (!selectedStudent) return;
+    if (!selectedStudent || isAwardingPoints) return;
 
+    setIsAwardingPoints(true);
     try {
       const fallbackTransaction: Transaction = {
         id: `tx-${Date.now()}`,
@@ -457,6 +470,8 @@ export function HouseDeckApp() {
         return;
       }
       notify(error instanceof Error ? error.message : "Could not save points.");
+    } finally {
+      setIsAwardingPoints(false);
     }
   };
 
@@ -514,12 +529,14 @@ export function HouseDeckApp() {
   };
 
   const awardHousePoints = async (house: HouseName) => {
+    if (isAwardingHouse) return;
     const amount = Number(housePointDrafts[house]) || 0;
     if (!amount) {
       notify("Enter a point amount for that house.");
       return;
     }
 
+    setIsAwardingHouse(house);
     try {
       const transaction =
         session && supabaseReady
@@ -550,10 +567,15 @@ export function HouseDeckApp() {
         return;
       }
       notify(error instanceof Error ? error.message : "Could not update house points.");
+    } finally {
+      setIsAwardingHouse(null);
     }
   };
 
   const undoTransaction = async (transaction: Transaction) => {
+    if (isUndoingTransactionId) return;
+
+    setIsUndoingTransactionId(transaction.id);
     try {
       if (session && supabaseReady) {
         await undoSupabaseTransaction(session.access_token, transaction.id);
@@ -578,6 +600,8 @@ export function HouseDeckApp() {
         return;
       }
       notify(error instanceof Error ? error.message : "Could not undo transaction.");
+    } finally {
+      setIsUndoingTransactionId(null);
     }
   };
 
@@ -661,11 +685,11 @@ export function HouseDeckApp() {
             </div>
           </div>
 
-          <nav className="-mx-1 mt-4 flex gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:mt-6 lg:grid lg:grid-cols-1 lg:overflow-visible lg:px-0 lg:pb-0">
+          <nav className="mt-6 hidden lg:grid lg:grid-cols-1 lg:gap-2">
             {visibleViews.map((view) => (
               <button
                 key={view}
-                className={`shrink-0 rounded-full px-4 py-2 text-left text-sm font-medium transition lg:rounded-lg lg:px-3 ${
+                className={`rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
                   activeView === view
                     ? "bg-white text-[#07080c]"
                     : "text-white/68 hover:bg-white/10 hover:text-white"
@@ -701,7 +725,7 @@ export function HouseDeckApp() {
 
         </aside>
 
-        <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8">
+        <main className="min-w-0 px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:pb-6">
           <header className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
@@ -713,12 +737,12 @@ export function HouseDeckApp() {
                 {session.user.email ?? "Signed in"}
               </p>
               {isAdmin ? (
-                <button className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-medium hover:bg-white/15 lg:rounded-lg" onClick={() => setModal("importCsv")} type="button">
+                <button className="hidden rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-medium hover:bg-white/15 lg:inline-flex lg:rounded-lg" onClick={() => setModal("importCsv")} type="button">
                   Import CSV
                 </button>
               ) : null}
               <button
-                className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-medium hover:bg-white/15 lg:rounded-lg"
+                className="hidden rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-medium hover:bg-white/15 lg:inline-flex lg:rounded-lg"
                 onClick={handleSignOut}
                 type="button"
               >
@@ -752,6 +776,7 @@ export function HouseDeckApp() {
                 pointCategory={pointCategory}
                 pointReason={pointReason}
                 query={query}
+                isAwardingPoints={isAwardingPoints}
                 selectedStudent={selectedStudent}
                 setPointAmount={setPointAmount}
                 setPointCategory={setPointCategory}
@@ -790,6 +815,8 @@ export function HouseDeckApp() {
                 pendingProfiles={pendingProfiles}
                 students={students}
                 transactions={transactions}
+                isAwardingHouse={isAwardingHouse}
+                isUndoingTransactionId={isUndoingTransactionId}
                 onAwardHousePoints={awardHousePoints}
                 onApproveProfile={approveProfile}
                 onArchive={archiveAndReset}
@@ -805,6 +832,30 @@ export function HouseDeckApp() {
             )}
           </div>
         </main>
+      </div>
+
+      <div className="mobile-nav-shell lg:hidden">
+        <nav aria-label="Mobile navigation" className="mobile-nav">
+          {visibleViews.map((view) => (
+            <button
+              key={view}
+              className={`mobile-nav-item ${activeView === view ? "mobile-nav-item-active" : ""}`}
+              onClick={() => setActiveView(view)}
+              type="button"
+            >
+              <span className="mobile-nav-dot" aria-hidden="true" />
+              <span>{mobileViewLabels[view]}</span>
+            </button>
+          ))}
+          <button
+            className="mobile-nav-item"
+            onClick={handleSignOut}
+            type="button"
+          >
+            <span className="mobile-nav-dot" aria-hidden="true" />
+            <span>Sign Out</span>
+          </button>
+        </nav>
       </div>
 
       <Toast message={toast} />
@@ -1048,6 +1099,7 @@ function Students({
   onExport,
   onImport,
   onManage,
+  isAwardingPoints,
   pointAmount,
   pointCategory,
   pointReason,
@@ -1070,6 +1122,7 @@ function Students({
   onExport: () => void;
   onImport: () => void;
   onManage: (studentId: string) => void;
+  isAwardingPoints: boolean;
   pointAmount: number;
   pointCategory: string;
   pointReason: string;
@@ -1107,18 +1160,47 @@ function Students({
             </select>
           </label>
           {isAdmin ? (
-            <button className="button-secondary self-end" onClick={onExport} type="button">Export</button>
+            <button className="button-secondary min-h-11 self-end justify-center" onClick={onExport} type="button">Export</button>
           ) : null}
           {isAdmin ? (
-            <button className="button-secondary self-end" onClick={onImport} type="button">Import</button>
+            <button className="button-secondary min-h-11 self-end justify-center" onClick={onImport} type="button">Import</button>
           ) : null}
           {isAdmin ? (
-            <button className="button-primary self-end" onClick={onAdd} type="button">Add Student</button>
+            <button className="button-primary min-h-11 self-end justify-center" onClick={onAdd} type="button">Add Student</button>
           ) : null}
+        </div>
+        <div className="mb-4 rounded-2xl border border-yellow-200/15 bg-yellow-200/[0.06] p-3 md:hidden">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-yellow-100/60">Selected for points</p>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate font-semibold">{selectedStudent.firstName} {selectedStudent.lastName}</p>
+              <p className="mt-1 text-sm text-white/60">
+                {selectedStudent.points} points • {selectedStudent.house} House
+              </p>
+            </div>
+            <button
+              className="button-primary shrink-0 justify-center"
+              onClick={() => {
+                window.requestAnimationFrame(() => {
+                  awardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+              }}
+              type="button"
+            >
+              Award
+            </button>
+          </div>
         </div>
         <div className="grid gap-3 md:hidden">
           {filteredStudents.map((student) => (
-            <article className="rounded-2xl border border-white/10 bg-white/[0.045] p-4" key={student.id}>
+            <article
+              className={`rounded-2xl border p-4 transition ${
+                student.id === selectedStudent.id
+                  ? "border-yellow-200/40 bg-yellow-200/[0.08] shadow-[0_0_0_1px_rgba(253,224,71,0.15)]"
+                  : "border-white/10 bg-white/[0.045]"
+              }`}
+              key={student.id}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-semibold">{student.firstName} {student.lastName}</p>
@@ -1143,11 +1225,11 @@ function Students({
                 ) : null}
                 <button
                   aria-label={`Award points to ${student.firstName} ${student.lastName}`}
-                  className="button-primary justify-center"
+                  className={student.id === selectedStudent.id ? "button-secondary justify-center" : "button-primary justify-center"}
                   onClick={() => handleManageStudent(student.id)}
                   type="button"
                 >
-                  Award
+                  {student.id === selectedStudent.id ? "Selected" : "Award"}
                 </button>
               </div>
             </article>
@@ -1167,7 +1249,12 @@ function Students({
             </thead>
             <tbody>
               {filteredStudents.map((student) => (
-                <tr className="border-b border-white/10 last:border-0" key={student.id}>
+                <tr
+                  className={`border-b border-white/10 last:border-0 ${
+                    student.id === selectedStudent.id ? "bg-yellow-200/[0.05]" : ""
+                  }`}
+                  key={student.id}
+                >
                   <td className="py-3 font-medium">{student.firstName} {student.lastName}</td>
                   <td className="py-3 text-white/65">{student.grade || "New"}</td>
                   <td className="py-3 font-mono text-xs text-white/55">{student.familyId ?? "None"}</td>
@@ -1205,6 +1292,7 @@ function Students({
       <div ref={awardPanelRef}>
         <Points
           onAward={onAward}
+          isAwardingPoints={isAwardingPoints}
           pointAmount={pointAmount}
           pointCategory={pointCategory}
           pointReason={pointReason}
@@ -1220,6 +1308,7 @@ function Students({
 
 function Points({
   onAward,
+  isAwardingPoints,
   pointAmount,
   pointCategory,
   pointReason,
@@ -1229,6 +1318,7 @@ function Points({
   setPointReason,
 }: {
   onAward: () => void;
+  isAwardingPoints: boolean;
   pointAmount: number;
   pointCategory: string;
   pointReason: string;
@@ -1241,7 +1331,7 @@ function Points({
     <div>
       <Panel action="Few taps" title="Award Points">
         <div className="grid gap-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div className="sticky top-3 z-10 rounded-2xl border border-white/10 bg-[#11141b]/95 p-4 backdrop-blur md:static md:bg-white/[0.04] md:backdrop-blur-0">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">Selected student</p>
@@ -1262,7 +1352,8 @@ function Points({
             <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6">
             {[1, 2, 5, 10, -1, -5].map((amount) => (
               <button
-                className={pointAmount === amount ? "button-primary py-3" : "button-secondary py-3"}
+                className={pointAmount === amount ? "button-primary min-h-12 justify-center py-3" : "button-secondary min-h-12 justify-center py-3"}
+                disabled={isAwardingPoints}
                 key={amount}
                 onClick={() => setPointAmount(amount)}
                 type="button"
@@ -1284,11 +1375,18 @@ function Points({
           </label>
           <label className="grid gap-1 text-sm font-medium">
             Reason
-            <textarea className="field min-h-24" onChange={(event) => setPointReason(event.target.value)} placeholder="Add a short note for the activity feed and audit log" value={pointReason} />
+            <textarea className="field min-h-24" disabled={isAwardingPoints} onChange={(event) => setPointReason(event.target.value)} placeholder="Add a short note for the activity feed and audit log" value={pointReason} />
           </label>
-          <button className="button-primary w-full py-3" onClick={onAward} type="button">
-            Award {pointAmount > 0 ? `+${pointAmount}` : pointAmount} Points
+          <button className="button-primary hidden w-full justify-center py-3 md:inline-flex disabled:cursor-not-allowed disabled:opacity-60" disabled={isAwardingPoints} onClick={onAward} type="button">
+            {isAwardingPoints ? "Saving..." : `Award ${pointAmount > 0 ? `+${pointAmount}` : pointAmount} Points`}
           </button>
+          <div className="sticky bottom-3 z-10 md:hidden">
+            <button className="button-primary w-full justify-center py-4 text-base shadow-2xl shadow-black/40 disabled:cursor-not-allowed disabled:opacity-60" disabled={isAwardingPoints} onClick={onAward} type="button">
+              {isAwardingPoints
+                ? `Saving for ${selectedStudent.firstName}...`
+                : `Award ${pointAmount > 0 ? `+${pointAmount}` : pointAmount} Points to ${selectedStudent.firstName}`}
+            </button>
+          </div>
         </div>
       </Panel>
     </div>
@@ -1512,6 +1610,8 @@ function Admin({
   pendingProfiles,
   students,
   transactions,
+  isAwardingHouse,
+  isUndoingTransactionId,
   onAwardHousePoints,
   onApproveProfile,
   onArchive,
@@ -1528,6 +1628,8 @@ function Admin({
   pendingProfiles: SupabaseProfile[];
   students: Student[];
   transactions: Transaction[];
+  isAwardingHouse: HouseName | null;
+  isUndoingTransactionId: string | null;
   onAwardHousePoints: (house: HouseName) => void;
   onApproveProfile: (profileId: string, role: SupabaseRole) => void;
   onArchive: () => void;
@@ -1584,6 +1686,7 @@ function Admin({
                 <div className="flex flex-wrap gap-2">
                   <input
                     className="field max-w-[120px]"
+                    disabled={isAwardingHouse === house.house}
                     onChange={(event) =>
                       setHousePointDrafts((current) => ({
                         ...current,
@@ -1594,8 +1697,8 @@ function Admin({
                     type="number"
                     value={housePointDrafts[house.house]}
                   />
-                  <button className="button-primary" onClick={() => onAwardHousePoints(house.house)} type="button">
-                    Add Points
+                  <button className="button-primary disabled:cursor-not-allowed disabled:opacity-60" disabled={isAwardingHouse === house.house} onClick={() => onAwardHousePoints(house.house)} type="button">
+                    {isAwardingHouse === house.house ? "Saving..." : "Add Points"}
                   </button>
                   <label className="button-secondary cursor-pointer">
                     Upload Mascot
@@ -1693,11 +1796,12 @@ function Admin({
                       </p>
                     </div>
                     <button
-                      className="button-secondary"
+                      className="button-secondary disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isUndoingTransactionId === transaction.id}
                       onClick={() => onUndoTransaction(transaction)}
                       type="button"
                     >
-                      Undo
+                      {isUndoingTransactionId === transaction.id ? "Undoing..." : "Undo"}
                     </button>
                   </div>
                 </div>

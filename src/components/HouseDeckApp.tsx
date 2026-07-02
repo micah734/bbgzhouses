@@ -949,7 +949,7 @@ function Dashboard({
           <div className="grid gap-3 sm:grid-cols-2">
             {todayHouseTotals.map((entry) => (
               <button
-                className="rounded-lg border border-white/10 bg-white/[0.04] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.07]"
+                className="dashboard-chip rounded-xl p-4 text-left transition hover:border-white/25 hover:bg-white/[0.08]"
                 key={entry.house}
                 onClick={() =>
                   onOpenFilteredTransactions({
@@ -967,6 +967,7 @@ function Dashboard({
                     {entry.points > 0 ? `+${entry.points}` : entry.points}
                   </span>
                 </div>
+                <p className="mt-3 text-xs uppercase tracking-[0.18em] text-white/45">Open transactions</p>
               </button>
             ))}
           </div>
@@ -978,7 +979,7 @@ function Dashboard({
             ) : (
               todayTeacherTotals.slice(0, 6).map((entry) => (
                 <button
-                  className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.04] p-4 text-left transition hover:border-white/20 hover:bg-white/[0.07]"
+                  className="dashboard-chip flex items-center justify-between rounded-xl p-4 text-left transition hover:border-white/25 hover:bg-white/[0.08]"
                   key={entry.teacher}
                   onClick={() =>
                     onOpenFilteredTransactions({
@@ -2019,28 +2020,30 @@ function Admin({
       <Panel action={`${sortedTransactions.length} shown`} title="Transaction History">
         <div className="grid gap-3">
           {hasActiveHistoryFilters ? (
-            <div className="flex flex-col gap-3 rounded-lg border border-yellow-200/15 bg-yellow-200/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-yellow-100/60">
-                  Filtered View
-                </p>
-                <p className="mt-1 text-sm text-yellow-50/85">
-                  {historyBreadcrumb || "Custom transaction filters are active."}
-                </p>
+            <div className="rounded-xl border border-yellow-200/15 bg-[linear-gradient(135deg,rgba(253,224,71,0.12),rgba(253,224,71,0.04))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-yellow-100/60">
+                    Filtered View
+                  </p>
+                  <p className="mt-1 text-sm text-yellow-50/85">
+                    {historyBreadcrumb || "Custom transaction filters are active."}
+                  </p>
+                </div>
+                <button
+                  className="button-secondary"
+                  onClick={() => {
+                    setHistoryQuery("");
+                    setHistoryHouseFilter("All");
+                    setHistoryDateFilter("");
+                    setHistoryDateRange("all");
+                    setHistorySort("newest");
+                  }}
+                  type="button"
+                >
+                  Back to Full Admin View
+                </button>
               </div>
-              <button
-                className="button-secondary"
-                onClick={() => {
-                  setHistoryQuery("");
-                  setHistoryHouseFilter("All");
-                  setHistoryDateFilter("");
-                  setHistoryDateRange("all");
-                  setHistorySort("newest");
-                }}
-                type="button"
-              >
-                Back to Full Admin View
-              </button>
             </div>
           ) : null}
           <div className="grid gap-3 md:grid-cols-[1fr_180px_180px_180px]">
@@ -2378,10 +2381,10 @@ function Toast({ message }: { message: string }) {
 
 function Panel({ action, children, title }: { action?: string; children: React.ReactNode; title: string }) {
   return (
-    <section className="rounded-lg border border-white/10 bg-white/[0.055] p-5 shadow-2xl shadow-black/20 backdrop-blur">
+    <section className="panel-shell p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">{title}</h2>
-        {action ? <span className="text-xs font-medium text-white/50">{action}</span> : null}
+        {action ? <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-medium text-white/50">{action}</span> : null}
       </div>
       {children}
     </section>
@@ -2390,13 +2393,13 @@ function Panel({ action, children, title }: { action?: string; children: React.R
 
 function Metric({ label, note, value }: { label: string; note: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.055] px-4 py-3 shadow-xl shadow-black/10">
+    <div className="metric-shell px-4 py-3">
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-white/55">{label}</p>
           <p className="mt-1 text-xs text-white/45">{note}</p>
         </div>
-        <p className="text-2xl font-semibold tracking-tight sm:text-3xl">{value}</p>
+        <p className="metric-value-glow text-2xl font-semibold tracking-tight sm:text-3xl">{value}</p>
       </div>
     </div>
   );

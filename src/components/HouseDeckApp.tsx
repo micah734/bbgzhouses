@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   HouseName,
   Student,
@@ -22,6 +22,7 @@ import {
   getStoredSession,
   importSupabaseStudents,
   isSupabaseConfigured,
+  isSupabaseSessionExpiredError,
   loadHouseDeckData,
   resetSupabasePoints,
   signInWithPassword,
@@ -33,7 +34,6 @@ import {
 type View =
   | "Dashboard"
   | "Students"
-  | "Points"
   | "Assignment"
   | "Scoreboard"
   | "Reports"
@@ -53,7 +53,6 @@ type NewStudentDraft = {
 const views: View[] = [
   "Dashboard",
   "Students",
-  "Points",
   "Assignment",
   "Scoreboard",
   "Reports",
@@ -61,6 +60,7 @@ const views: View[] = [
 ];
 
 const houses: HouseName[] = ["Red", "Blue", "Yellow", "Green"];
+const mascotStorageKey = "housedeck.mascots";
 
 const emptyStudentDraft: NewStudentDraft = {
   firstName: "",
@@ -96,10 +96,21 @@ export function HouseDeckApp() {
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
+  const [mascotImages, setMascotImages] = useState<Record<HouseName, string | null>>({
+    Red: null,
+    Blue: null,
+    Yellow: null,
+    Green: null,
+  });
   const isAdmin = profile?.role === "admin";
   const isApproved = profile?.approvalStatus === "approved";
   const visibleViews = useMemo(
-    () => (isAdmin ? views : views.filter((view) => view !== "Reports" && view !== "Admin")),
+    () =>
+      isAdmin
+        ? views
+        : views.filter(
+            (view) => view !== "Assignment" && view !== "Reports" && view !== "Admin",
+          ),
     [isAdmin],
   );
 
@@ -124,6 +135,16 @@ export function HouseDeckApp() {
     window.setTimeout(() => setToast(""), 3200);
   };
 
+  const expireSession = useCallback(() => {
+    storeSession(null);
+    setSession(null);
+    setProfile(null);
+    setPendingProfiles([]);
+    setStudents(seedStudents);
+    setTransactions(seedTransactions);
+    setDataSource("sample");
+  }, []);
+
   const refreshSupabaseData = useCallback(async (currentSession = session) => {
     if (!currentSession || !supabaseReady) return;
 
@@ -135,9 +156,14 @@ export function HouseDeckApp() {
       setTransactions(data.transactions);
       setDataSource("supabase");
     } catch (error) {
+      if (isSupabaseSessionExpiredError(error)) {
+        expireSession();
+        notify("Your sign-in expired. Please sign in again.");
+        return;
+      }
       notify(error instanceof Error ? error.message : "Could not load Supabase data.");
     }
-  }, [session, supabaseReady]);
+  }, [expireSession, session, supabaseReady]);
 
   useEffect(() => {
     const updateSyncLabel = () => {
@@ -159,9 +185,18 @@ export function HouseDeckApp() {
     const timeout = window.setTimeout(() => {
       setSupabaseReady(isSupabaseConfigured());
       setSession(getStoredSession());
+      setMascotImages(loadStoredMascots());
     }, 0);
 
     return () => window.clearTimeout(timeout);
+  }, []);
+
+  const saveMascotImage = useCallback((house: HouseName, imageDataUrl: string | null) => {
+    setMascotImages((current) => {
+      const next = { ...current, [house]: imageDataUrl };
+      storeMascots(next);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -186,7 +221,7 @@ export function HouseDeckApp() {
 
   useEffect(() => {
     if (isAdmin) return;
-    if (activeView === "Reports" || activeView === "Admin") {
+    if (activeView === "Assignment" || activeView === "Reports" || activeView === "Admin") {
       setActiveView("Dashboard");
     }
   }, [activeView, isAdmin]);
@@ -216,19 +251,13 @@ export function HouseDeckApp() {
   };
 
   const handleSignOut = () => {
-    storeSession(null);
-    setSession(null);
-    setProfile(null);
-    setPendingProfiles([]);
-    setStudents(seedStudents);
-    setTransactions(seedTransactions);
-    setDataSource("sample");
+    expireSession();
     notify("Signed out. Showing sample data.");
   };
 
   const openPointsForStudent = (studentId: string) => {
     setSelectedStudentId(studentId);
-    setActiveView("Points");
+    setActiveView("Students");
   };
 
   const openEditStudent = (student: Student) => {
@@ -414,6 +443,11 @@ export function HouseDeckApp() {
       setPointReason("");
       notify(`${pointAmount > 0 ? "+" : ""}${pointAmount} points saved.`);
     } catch (error) {
+      if (isSupabaseSessionExpiredError(error)) {
+        expireSession();
+        notify("Your sign-in expired. Please sign in again before awarding points.");
+        return;
+      }
       notify(error instanceof Error ? error.message : "Could not save points.");
     }
   };
@@ -509,6 +543,7 @@ export function HouseDeckApp() {
     return (
       <Scoreboard
         houseTotals={houseTotals}
+        mascotImages={mascotImages}
         onBack={() => setActiveView("Dashboard")}
         students={sortedStudents}
         syncLabel={syncLabel}
@@ -539,7 +574,7 @@ export function HouseDeckApp() {
       </div>
 
       <div className="relative grid min-h-screen lg:grid-cols-[270px_1fr]">
-        <aside className="flex min-h-screen flex-col border-b border-white/10 bg-black/45 px-4 py-4 backdrop-blur-xl lg:border-b-0 lg:border-r">
+        <aside className="border-b border-white/10 bg-black/45 px-4 py-4 backdrop-blur-xl lg:flex lg:min-h-screen lg:flex-col lg:border-b-0 lg:border-r">
           <div className="flex items-center gap-3">
             <div className="relative size-11 overflow-hidden rounded-lg border border-yellow-200/30 bg-black">
               <Image alt="HouseDeck lion logo" className="object-cover" fill sizes="44px" src="/brand/lion.png" />
@@ -550,11 +585,11 @@ export function HouseDeckApp() {
             </div>
           </div>
 
-          <nav className="mt-6 grid grid-cols-2 gap-2 lg:grid-cols-1">
+          <nav className="-mx-1 mt-4 flex gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:mt-6 lg:grid lg:grid-cols-1 lg:overflow-visible lg:px-0 lg:pb-0">
             {visibleViews.map((view) => (
               <button
                 key={view}
-                className={`rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+                className={`shrink-0 rounded-full px-4 py-2 text-left text-sm font-medium transition lg:rounded-lg lg:px-3 ${
                   activeView === view
                     ? "bg-white text-[#07080c]"
                     : "text-white/68 hover:bg-white/10 hover:text-white"
@@ -567,13 +602,14 @@ export function HouseDeckApp() {
             ))}
           </nav>
 
-          <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.045] p-3">
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.045] p-3 lg:mt-6 lg:rounded-lg">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/50">
               House Totals
             </p>
-            <div className="mt-3 grid gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-1">
               {houses.map((house) => (
-                <div key={house} className="flex items-center justify-between text-sm">
+                <div key={house} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm lg:rounded-lg lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
+                  <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2">
                     <span className="size-3 rounded-full" style={{ backgroundColor: houseStyles[house].hex }} />
                     {house}
@@ -581,6 +617,7 @@ export function HouseDeckApp() {
                   <span className="font-mono text-xs text-white/60">
                     {houseTotals.find((item) => item.house === house)?.points ?? 0}
                   </span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -591,16 +628,25 @@ export function HouseDeckApp() {
         <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8">
           <header className="flex flex-col gap-4 border-b border-white/10 pb-5 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
                 {activeView}
               </h1>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button className="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/15" onClick={() => setModal("importCsv")} type="button">
-                Import CSV
-              </button>
-              <button className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-[#07080c] hover:bg-yellow-100" onClick={() => setActiveView("Points")} type="button">
-                Award Points
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <p className="max-w-[220px] truncate text-xs text-white/45 sm:text-sm">
+                {session.user.email ?? "Signed in"}
+              </p>
+              {isAdmin ? (
+                <button className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-medium hover:bg-white/15 lg:rounded-lg" onClick={() => setModal("importCsv")} type="button">
+                  Import CSV
+                </button>
+              ) : null}
+              <button
+                className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 text-sm font-medium hover:bg-white/15 lg:rounded-lg"
+                onClick={handleSignOut}
+                type="button"
+              >
+                Sign Out
               </button>
             </div>
           </header>
@@ -608,13 +654,9 @@ export function HouseDeckApp() {
           <div className="py-6">
             {activeView === "Dashboard" && (
               <Dashboard
-                dataSource={dataSource}
                 houseTotals={houseTotals}
                 leadingHouse={leadingHouse}
-                onRefresh={() => void refreshSupabaseData()}
-                onSignOut={handleSignOut}
-                sessionEmail={session.user.email ?? "Signed in"}
-                syncLabel={syncLabel}
+                mascotImages={mascotImages}
                 students={sortedStudents}
                 transactions={transactions}
               />
@@ -623,26 +665,23 @@ export function HouseDeckApp() {
               <Students
                 filteredStudents={filteredStudents}
                 houseFilter={houseFilter}
+                isAdmin={isAdmin}
+                onAward={awardPoints}
                 onAdd={() => setModal("addStudent")}
                 onExport={() => downloadCsv("housedeck-students.csv", studentsToCsv(students))}
                 onImport={() => setModal("importCsv")}
                 onEdit={openEditStudent}
                 onManage={openPointsForStudent}
-                query={query}
-                setHouseFilter={setHouseFilter}
-                setQuery={setQuery}
-              />
-            )}
-            {activeView === "Points" && selectedStudent && (
-              <Points
-                onAward={awardPoints}
                 pointAmount={pointAmount}
                 pointCategory={pointCategory}
                 pointReason={pointReason}
+                query={query}
                 selectedStudent={selectedStudent}
                 setPointAmount={setPointAmount}
                 setPointCategory={setPointCategory}
                 setPointReason={setPointReason}
+                setHouseFilter={setHouseFilter}
+                setQuery={setQuery}
                 setSelectedStudentId={setSelectedStudentId}
                 students={sortedStudents}
               />
@@ -670,6 +709,7 @@ export function HouseDeckApp() {
               <Admin
                 houseTotals={houseTotals}
                 isAdmin={isAdmin}
+                mascotImages={mascotImages}
                 pendingProfiles={pendingProfiles}
                 onApproveProfile={approveProfile}
                 onArchive={archiveAndReset}
@@ -677,6 +717,7 @@ export function HouseDeckApp() {
                   downloadJson("housedeck-backup.json", { students, transactions });
                   notify("Backup downloaded.");
                 }}
+                onChangeMascot={saveMascotImage}
                 onReset={resetPoints}
               />
             )}
@@ -701,23 +742,15 @@ export function HouseDeckApp() {
 }
 
 function Dashboard({
-  dataSource,
   houseTotals,
   leadingHouse,
-  onRefresh,
-  onSignOut,
-  sessionEmail,
-  syncLabel,
+  mascotImages,
   students,
   transactions,
 }: {
-  dataSource: "sample" | "supabase";
   houseTotals: HouseTotal[];
   leadingHouse: HouseTotal;
-  onRefresh: () => void;
-  onSignOut: () => void;
-  sessionEmail: string;
-  syncLabel: string;
+  mascotImages: Record<HouseName, string | null>;
   students: Student[];
   transactions: Transaction[];
 }) {
@@ -734,7 +767,7 @@ function Dashboard({
         <Panel action="Public display ready" title="House Standings">
           <div className="grid gap-3">
             {houseTotals.map((house, index) => (
-              <HouseRow house={house} index={index} key={house.house} />
+              <HouseRow house={house} index={index} key={house.house} mascotImage={mascotImages[house.house]} />
             ))}
           </div>
         </Panel>
@@ -746,28 +779,6 @@ function Dashboard({
       <Panel action="Live feed" title="Recent Activity">
         <ActivityList students={students} transactions={transactions.slice(0, 5)} />
       </Panel>
-
-      <section className="grid gap-5 lg:grid-cols-2">
-        <Panel title="Status">
-          <div className="text-sm text-yellow-100/80">
-            <p>Live sync: {syncLabel}</p>
-            <p className="mt-2 text-white/65">
-              {dataSource === "supabase" ? "Database sync active." : "Loading database data."}
-            </p>
-          </div>
-        </Panel>
-        <Panel title="Account">
-          <p className="truncate text-sm text-white/70">{sessionEmail}</p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2">
-            <button className="button-compact justify-center" onClick={onRefresh} type="button">
-              Refresh Data
-            </button>
-            <button className="button-compact justify-center" onClick={onSignOut} type="button">
-              Sign Out
-            </button>
-          </div>
-        </Panel>
-      </section>
     </div>
   );
 }
@@ -948,90 +959,180 @@ function PendingApprovalScreen({
 function Students({
   filteredStudents,
   houseFilter,
+  isAdmin,
+  onAward,
   onAdd,
   onEdit,
   onExport,
   onImport,
   onManage,
+  pointAmount,
+  pointCategory,
+  pointReason,
   query,
+  selectedStudent,
+  setPointAmount,
+  setPointCategory,
+  setPointReason,
   setHouseFilter,
   setQuery,
+  setSelectedStudentId,
+  students,
 }: {
   filteredStudents: Student[];
   houseFilter: "All" | HouseName;
+  isAdmin: boolean;
+  onAward: () => void;
   onAdd: () => void;
   onEdit: (student: Student) => void;
   onExport: () => void;
   onImport: () => void;
   onManage: (studentId: string) => void;
+  pointAmount: number;
+  pointCategory: string;
+  pointReason: string;
   query: string;
+  selectedStudent: Student;
+  setPointAmount: (value: number) => void;
+  setPointCategory: (value: string) => void;
+  setPointReason: (value: string) => void;
   setHouseFilter: (value: "All" | HouseName) => void;
   setQuery: (value: string) => void;
+  setSelectedStudentId: (value: string) => void;
+  students: Student[];
 }) {
+  const awardPanelRef = useRef<HTMLDivElement | null>(null);
+  const handleManageStudent = (studentId: string) => {
+    onManage(studentId);
+    window.requestAnimationFrame(() => {
+      awardPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   return (
-    <Panel action={`${filteredStudents.length} shown`} title="Student Roster">
-      <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px_auto_auto_auto]">
-        <label className="grid gap-1 text-sm font-medium">
-          Search
-          <input className="field" onChange={(event) => setQuery(event.target.value)} placeholder="Search by student name" value={query} />
-        </label>
-        <label className="grid gap-1 text-sm font-medium">
-          House
-          <select className="field" onChange={(event) => setHouseFilter(event.target.value as "All" | HouseName)} value={houseFilter}>
-            <option>All</option>
-            {houses.map((house) => <option key={house}>{house}</option>)}
-          </select>
-        </label>
-        <button className="button-secondary self-end" onClick={onExport} type="button">Export</button>
-        <button className="button-secondary self-end" onClick={onImport} type="button">Import</button>
-        <button className="button-primary self-end" onClick={onAdd} type="button">Add Student</button>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-          <thead>
-            <tr className="border-b border-white/10 text-xs uppercase tracking-[0.12em] text-white/45">
-              <th className="py-3 font-semibold">Name</th>
-              <th className="py-3 font-semibold">Grade</th>
-              <th className="py-3 font-semibold">Family</th>
-              <th className="py-3 font-semibold">House</th>
-              <th className="py-3 text-right font-semibold">Points</th>
-              <th className="py-3 text-right font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredStudents.map((student) => (
-              <tr className="border-b border-white/10 last:border-0" key={student.id}>
-                <td className="py-3 font-medium">{student.firstName} {student.lastName}</td>
-                <td className="py-3 text-white/65">{student.grade || "New"}</td>
-                <td className="py-3 font-mono text-xs text-white/55">{student.familyId ?? "None"}</td>
-                <td className="py-3"><HouseBadge house={student.house} /></td>
-                <td className="py-3 text-right font-mono">{student.points}</td>
-                <td className="py-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button
-                      aria-label={`Edit ${student.firstName} ${student.lastName}`}
-                      className="button-compact"
-                      onClick={() => onEdit(student)}
-                      type="button"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      aria-label={`Award points to ${student.firstName} ${student.lastName}`}
-                      className="button-compact"
-                      onClick={() => onManage(student.id)}
-                      type="button"
-                    >
-                      Award
-                    </button>
-                  </div>
-                </td>
+    <div className="grid gap-5">
+      <Panel action={`${filteredStudents.length} shown`} title="Student Roster">
+        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px_auto_auto_auto]">
+          <label className="grid gap-1 text-sm font-medium">
+            Search
+            <input className="field" onChange={(event) => setQuery(event.target.value)} placeholder="Search by student name" value={query} />
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            House
+            <select className="field" onChange={(event) => setHouseFilter(event.target.value as "All" | HouseName)} value={houseFilter}>
+              <option>All</option>
+              {houses.map((house) => <option key={house}>{house}</option>)}
+            </select>
+          </label>
+          {isAdmin ? (
+            <button className="button-secondary self-end" onClick={onExport} type="button">Export</button>
+          ) : null}
+          {isAdmin ? (
+            <button className="button-secondary self-end" onClick={onImport} type="button">Import</button>
+          ) : null}
+          {isAdmin ? (
+            <button className="button-primary self-end" onClick={onAdd} type="button">Add Student</button>
+          ) : null}
+        </div>
+        <div className="grid gap-3 md:hidden">
+          {filteredStudents.map((student) => (
+            <article className="rounded-2xl border border-white/10 bg-white/[0.045] p-4" key={student.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{student.firstName} {student.lastName}</p>
+                  <p className="mt-1 text-sm text-white/60">Grade {student.grade || "New"}</p>
+                </div>
+                <HouseBadge house={student.house} />
+              </div>
+              <div className="mt-3 flex items-center justify-between text-sm text-white/60">
+                <span>Family {student.familyId ?? "None"}</span>
+                <span className="font-mono text-white">{student.points} pts</span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                {isAdmin ? (
+                  <button
+                    aria-label={`Edit ${student.firstName} ${student.lastName}`}
+                    className="button-compact justify-center"
+                    onClick={() => onEdit(student)}
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                ) : null}
+                <button
+                  aria-label={`Award points to ${student.firstName} ${student.lastName}`}
+                  className="button-primary justify-center"
+                  onClick={() => handleManageStudent(student.id)}
+                  type="button"
+                >
+                  Award
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
+          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-xs uppercase tracking-[0.12em] text-white/45">
+                <th className="py-3 font-semibold">Name</th>
+                <th className="py-3 font-semibold">Grade</th>
+                <th className="py-3 font-semibold">Family</th>
+                <th className="py-3 font-semibold">House</th>
+                <th className="py-3 text-right font-semibold">Points</th>
+                <th className="py-3 text-right font-semibold">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredStudents.map((student) => (
+                <tr className="border-b border-white/10 last:border-0" key={student.id}>
+                  <td className="py-3 font-medium">{student.firstName} {student.lastName}</td>
+                  <td className="py-3 text-white/65">{student.grade || "New"}</td>
+                  <td className="py-3 font-mono text-xs text-white/55">{student.familyId ?? "None"}</td>
+                  <td className="py-3"><HouseBadge house={student.house} /></td>
+                  <td className="py-3 text-right font-mono">{student.points}</td>
+                  <td className="py-3 text-right">
+                    <div className="flex justify-end gap-2">
+                      {isAdmin ? (
+                        <button
+                          aria-label={`Edit ${student.firstName} ${student.lastName}`}
+                          className="button-compact"
+                          onClick={() => onEdit(student)}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                      <button
+                        aria-label={`Award points to ${student.firstName} ${student.lastName}`}
+                        className="button-compact"
+                        onClick={() => handleManageStudent(student.id)}
+                        type="button"
+                      >
+                        Award
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <div ref={awardPanelRef}>
+        <Points
+          onAward={onAward}
+          pointAmount={pointAmount}
+          pointCategory={pointCategory}
+          pointReason={pointReason}
+          selectedStudent={selectedStudent}
+          setPointAmount={setPointAmount}
+          setPointCategory={setPointCategory}
+          setPointReason={setPointReason}
+        />
       </div>
-    </Panel>
+    </div>
   );
 }
 
@@ -1044,8 +1145,6 @@ function Points({
   setPointAmount,
   setPointCategory,
   setPointReason,
-  setSelectedStudentId,
-  students,
 }: {
   onAward: () => void;
   pointAmount: number;
@@ -1055,51 +1154,41 @@ function Points({
   setPointAmount: (value: number) => void;
   setPointCategory: (value: string) => void;
   setPointReason: (value: string) => void;
-  setSelectedStudentId: (value: string) => void;
-  students: Student[];
 }) {
   return (
-    <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
-      <Panel action="Fast entry" title="Find Student">
-        <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
-          {students.map((student) => (
-            <button
-              className={`rounded-lg border p-3 text-left transition ${
-                selectedStudent.id === student.id
-                  ? "border-yellow-200/70 bg-yellow-200/10"
-                  : "border-white/10 bg-white/[0.035] hover:bg-white/10"
-              }`}
-              key={student.id}
-              onClick={() => setSelectedStudentId(student.id)}
-              type="button"
-            >
-              <span className="block font-medium">{student.firstName} {student.lastName}</span>
-              <span className="mt-1 flex items-center justify-between text-xs text-white/55">
-                <HouseBadge house={student.house} />
-                {student.points} points
-              </span>
-            </button>
-          ))}
-        </div>
-      </Panel>
-      <Panel action="Saves locally now" title="Award Points">
-        <div className="grid gap-5">
-          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
-            <p className="text-sm text-white/55">Selected student</p>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <Panel action="Few taps" title="Award Points">
+        <div className="grid gap-4">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-2xl font-semibold">{selectedStudent.firstName} {selectedStudent.lastName}</p>
-                <p className="mt-1 text-sm text-white/55">Grade {selectedStudent.grade || "New"} - {selectedStudent.points} current points</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/45">Selected student</p>
+                <p className="mt-2 text-2xl font-semibold">{selectedStudent.firstName} {selectedStudent.lastName}</p>
+                <p className="mt-1 text-sm text-white/55">
+                  Grade {selectedStudent.grade || "New"} · {selectedStudent.points} current points
+                </p>
               </div>
               <HouseBadge house={selectedStudent.house} />
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-6">
+          <div className="rounded-2xl border border-yellow-200/15 bg-yellow-200/[0.06] px-4 py-3">
+            <span className="block text-xs uppercase tracking-[0.18em] text-yellow-100/60">Ready to award</span>
+            <span className="mt-1 block text-sm text-yellow-50/80">Pick a student, tap an amount, choose a category, then save.</span>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <p className="text-sm font-medium text-white/55">Point amount</p>
+            <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6">
             {[1, 2, 5, 10, -1, -5].map((amount) => (
-              <button className={pointAmount === amount ? "button-primary" : "button-secondary"} key={amount} onClick={() => setPointAmount(amount)} type="button">
+              <button
+                className={pointAmount === amount ? "button-primary py-3" : "button-secondary py-3"}
+                key={amount}
+                onClick={() => setPointAmount(amount)}
+                type="button"
+              >
                 {amount > 0 ? `+${amount}` : amount}
               </button>
             ))}
+            </div>
           </div>
           <label className="grid gap-1 text-sm font-medium">
             Category
@@ -1173,12 +1262,14 @@ function Assignment({
 
 function Scoreboard({
   houseTotals,
+  mascotImages,
   onBack,
   students,
   syncLabel,
   transactions,
 }: {
   houseTotals: HouseTotal[];
+  mascotImages: Record<HouseName, string | null>;
   onBack: () => void;
   students: Student[];
   syncLabel: string;
@@ -1227,7 +1318,7 @@ function Scoreboard({
         <section className="grid min-h-0 gap-5 xl:grid-cols-[1.6fr_0.8fr]">
           <div className="grid min-h-0 gap-4 lg:grid-cols-2">
             {houseTotals.map((house, index) => (
-              <DisplayHouseCard gapFromLead={houseTotals[0].points - house.points} house={house} index={index} key={house.house} />
+              <DisplayHouseCard gapFromLead={houseTotals[0].points - house.points} house={house} index={index} key={house.house} mascotImage={mascotImages[house.house]} />
             ))}
           </div>
 
@@ -1334,18 +1425,22 @@ function Reports({
 function Admin({
   houseTotals,
   isAdmin,
+  mascotImages,
   pendingProfiles,
   onApproveProfile,
   onArchive,
   onBackup,
+  onChangeMascot,
   onReset,
 }: {
   houseTotals: HouseTotal[];
   isAdmin: boolean;
+  mascotImages: Record<HouseName, string | null>;
   pendingProfiles: SupabaseProfile[];
   onApproveProfile: (profileId: string, role: SupabaseRole) => void;
   onArchive: () => void;
   onBackup: () => void;
+  onChangeMascot: (house: HouseName, imageDataUrl: string | null) => void;
   onReset: () => void;
 }) {
   return (
@@ -1355,7 +1450,7 @@ function Admin({
           <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
             <p className="font-semibold">Branding</p>
             <p className="mt-1 text-sm text-white/65">
-              Working name is HouseDeck. House colors are fixed, and mascot artwork can be layered in later.
+              Working name is HouseDeck. House colors are fixed, and mascot artwork can be uploaded below for the live display.
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -1378,8 +1473,47 @@ function Admin({
                 <HouseBadge house={house.house} />
                 <span className="font-mono text-sm">{house.points}</span>
               </div>
-              <div className="mt-3 rounded-lg border border-dashed border-white/15 p-3 text-center text-xs text-white/50">
-                Mascot slot
+              <div className="mt-3 grid gap-3">
+                <div className="relative overflow-hidden rounded-lg border border-dashed border-white/15 bg-black/20">
+                  {mascotImages[house.house] ? (
+                    <img
+                      alt={`${house.house} mascot`}
+                      className="h-32 w-full object-cover"
+                      src={mascotImages[house.house] ?? undefined}
+                    />
+                  ) : (
+                    <div className="grid h-32 place-items-center text-center text-xs text-white/50">
+                      Mascot slot
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <label className="button-secondary cursor-pointer">
+                    Upload Mascot
+                    <input
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          if (typeof reader.result === "string") {
+                            onChangeMascot(house.house, reader.result);
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                        event.currentTarget.value = "";
+                      }}
+                      type="file"
+                    />
+                  </label>
+                  {mascotImages[house.house] ? (
+                    <button className="button-compact" onClick={() => onChangeMascot(house.house, null)} type="button">
+                      Remove
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ))}
@@ -1429,10 +1563,12 @@ function DisplayHouseCard({
   gapFromLead,
   house,
   index,
+  mascotImage,
 }: {
   gapFromLead: number;
   house: HouseTotal;
   index: number;
+  mascotImage: string | null;
 }) {
   const style = houseStyles[house.house];
   const positionByHouse: Record<HouseName, string> = {
@@ -1444,7 +1580,7 @@ function DisplayHouseCard({
 
   return (
     <article className="group relative min-h-[260px] overflow-hidden rounded-lg border bg-black shadow-2xl" style={{ borderColor: style.ring, boxShadow: `0 0 44px ${style.ring}` }}>
-      <div className="absolute inset-0 scale-105 bg-cover bg-center opacity-70 transition duration-700 group-hover:scale-110" style={{ backgroundImage: "url('/brand/houses.png')", backgroundPosition: positionByHouse[house.house], backgroundSize: "200% 200%" }} />
+      <div className="absolute inset-0 scale-105 bg-cover bg-center opacity-70 transition duration-700 group-hover:scale-110" style={{ backgroundImage: mascotImage ? `url('${mascotImage}')` : "url('/brand/houses.png')", backgroundPosition: mascotImage ? "center" : positionByHouse[house.house], backgroundSize: mascotImage ? "cover" : "200% 200%" }} />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_42%,transparent_0,rgba(0,0,0,0.04)_19%,rgba(0,0,0,0.74)_42%,rgba(0,0,0,0.95)_100%)]" />
       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/40" />
       <div className="absolute left-1/2 top-[48%] grid size-28 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border text-3xl font-semibold backdrop-blur-sm sm:size-32" style={{ borderColor: style.hex, boxShadow: `0 0 50px ${style.hex}`, color: style.hex }}>
@@ -1648,12 +1784,19 @@ function HouseBadge({ house }: { house: HouseName }) {
   );
 }
 
-function HouseRow({ house, index }: { house: HouseTotal; index?: number }) {
+function HouseRow({ house, index, mascotImage }: { house: HouseTotal; index?: number; mascotImage?: string | null }) {
   return (
     <div className="rounded-lg border border-white/10 bg-black/20 p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           {typeof index === "number" ? <span className="grid size-8 place-items-center rounded-lg bg-white/10 font-mono text-sm">{index + 1}</span> : null}
+          {mascotImage ? (
+            <img
+              alt={`${house.house} mascot preview`}
+              className="size-10 rounded-lg border border-white/10 object-cover"
+              src={mascotImage}
+            />
+          ) : null}
           <HouseBadge house={house.house} />
         </div>
         <div className="text-right">
@@ -1815,4 +1958,42 @@ function downloadBlob(filename: string, content: string, type: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function loadStoredMascots(): Record<HouseName, string | null> {
+  if (typeof window === "undefined") {
+    return {
+      Red: null,
+      Blue: null,
+      Yellow: null,
+      Green: null,
+    };
+  }
+
+  const emptyMascots: Record<HouseName, string | null> = {
+    Red: null,
+    Blue: null,
+    Yellow: null,
+    Green: null,
+  };
+
+  const raw = window.localStorage.getItem(mascotStorageKey);
+  if (!raw) return emptyMascots;
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<HouseName, string | null>>;
+    return {
+      Red: parsed.Red ?? null,
+      Blue: parsed.Blue ?? null,
+      Yellow: parsed.Yellow ?? null,
+      Green: parsed.Green ?? null,
+    };
+  } catch {
+    return emptyMascots;
+  }
+}
+
+function storeMascots(mascots: Record<HouseName, string | null>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(mascotStorageKey, JSON.stringify(mascots));
 }

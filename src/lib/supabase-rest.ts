@@ -108,6 +108,16 @@ export function storeSession(session: SupabaseSession | null) {
   window.localStorage.setItem(sessionKey, JSON.stringify(session));
 }
 
+export function isSupabaseSessionExpiredError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+
+  return (
+    error.message.includes("JWT expired") ||
+    error.message.includes("PGRST303") ||
+    error.message.includes("SESSION_EXPIRED")
+  );
+}
+
 export async function signInWithPassword(email: string, password: string) {
   const response = await supabaseFetch("/auth/v1/token?grant_type=password", {
     body: JSON.stringify({ email, password }),
@@ -495,6 +505,13 @@ async function restFetch(path: string, accessToken: string, init: RequestInit = 
 
   if (!response.ok) {
     const message = await response.text();
+    if (
+      response.status === 401 ||
+      message.includes("JWT expired") ||
+      message.includes("PGRST303")
+    ) {
+      throw new Error("SESSION_EXPIRED");
+    }
     throw new Error(message || "Supabase request failed.");
   }
 

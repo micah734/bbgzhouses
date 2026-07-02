@@ -12,7 +12,8 @@ export type Student = {
 
 export type Transaction = {
   id: string;
-  studentId: string;
+  studentId?: string;
+  house?: HouseName;
   points: number;
   category: string;
   reason: string;

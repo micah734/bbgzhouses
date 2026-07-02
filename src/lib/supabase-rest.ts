@@ -53,7 +53,8 @@ type SupabaseStudentRow = {
 
 type SupabaseTransactionRow = {
   id: string;
-  student_id: string;
+  student_id: string | null;
+  house: HouseName | null;
   points: number;
   category: string;
   reason: string;
@@ -426,6 +427,40 @@ export async function awardSupabasePoints({
   };
 }
 
+export async function awardSupabaseHousePoints({
+  accessToken,
+  category,
+  house,
+  points,
+  reason,
+  teacherName,
+}: {
+  accessToken: string;
+  category: string;
+  house: HouseName;
+  points: number;
+  reason: string;
+  teacherName: string;
+}) {
+  const response = await restFetch("/hd_point_transactions", accessToken, {
+    body: JSON.stringify({
+      student_id: null,
+      house,
+      points,
+      category,
+      reason,
+      teacher_name: teacherName,
+    }),
+    headers: {
+      Prefer: "return=representation",
+    },
+    method: "POST",
+  });
+
+  const rows = (await response.json()) as SupabaseTransactionRow[];
+  return mapTransaction(rows[0]);
+}
+
 export async function resetSupabasePoints(accessToken: string) {
   await restFetch("/hd_students?active=eq.true", accessToken, {
     body: JSON.stringify({ points: 0 }),
@@ -533,7 +568,8 @@ function mapStudent(row: SupabaseStudentRow): Student {
 function mapTransaction(row: SupabaseTransactionRow): Transaction {
   return {
     id: row.id,
-    studentId: row.student_id,
+    studentId: row.student_id ?? undefined,
+    house: row.house ?? undefined,
     points: row.points,
     category: row.category,
     reason: row.reason,

@@ -16,6 +16,7 @@ import {
   SupabaseRole,
   SupabaseSession,
   archiveSupabaseTerm,
+  awardSupabaseHousePoints,
   awardSupabasePoints,
   createSupabaseStudent,
   ensureProfile,
@@ -96,6 +97,12 @@ export function HouseDeckApp() {
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
+  const [housePointDrafts, setHousePointDrafts] = useState<Record<HouseName, string>>({
+    Red: "10",
+    Blue: "10",
+    Yellow: "10",
+    Green: "10",
+  });
   const [mascotImages, setMascotImages] = useState<Record<HouseName, string | null>>({
     Red: null,
     Blue: null,
@@ -119,7 +126,7 @@ export function HouseDeckApp() {
     [students],
   );
 
-  const houseTotals = useMemo(() => getHouseTotals(students), [students]);
+  const houseTotals = useMemo(() => getHouseTotals(students, transactions), [students, transactions]);
   const leadingHouse = houseTotals[0];
   const filteredStudents = sortedStudents.filter((student) => {
     const name = `${student.firstName} ${student.lastName}`.toLowerCase();
@@ -505,6 +512,46 @@ export function HouseDeckApp() {
     }
   };
 
+  const awardHousePoints = async (house: HouseName) => {
+    const amount = Number(housePointDrafts[house]) || 0;
+    if (!amount) {
+      notify("Enter a point amount for that house.");
+      return;
+    }
+
+    try {
+      const transaction =
+        session && supabaseReady
+          ? await awardSupabaseHousePoints({
+              accessToken: session.access_token,
+              category: "House Bonus",
+              house,
+              points: amount,
+              reason: `${house} house adjustment`,
+              teacherName: session.user.email ?? "Admin",
+            })
+          : {
+              id: `tx-house-${Date.now()}`,
+              house,
+              points: amount,
+              category: "House Bonus",
+              reason: `${house} house adjustment`,
+              teacher: session?.user.email ?? "Admin",
+              date: new Date().toISOString().slice(0, 10),
+            };
+
+      setTransactions((current) => [transaction, ...current]);
+      notify(`${amount > 0 ? "+" : ""}${amount} points added to ${house}.`);
+    } catch (error) {
+      if (isSupabaseSessionExpiredError(error)) {
+        expireSession();
+        notify("Your sign-in expired. Please sign in again before updating house points.");
+        return;
+      }
+      notify(error instanceof Error ? error.message : "Could not update house points.");
+    }
+  };
+
   const archiveAndReset = async () => {
     const snapshot = { students, transactions, archivedAt: new Date().toISOString() };
 
@@ -708,9 +755,11 @@ export function HouseDeckApp() {
             {isAdmin && activeView === "Admin" && (
               <Admin
                 houseTotals={houseTotals}
+                housePointDrafts={housePointDrafts}
                 isAdmin={isAdmin}
                 mascotImages={mascotImages}
                 pendingProfiles={pendingProfiles}
+                onAwardHousePoints={awardHousePoints}
                 onApproveProfile={approveProfile}
                 onArchive={archiveAndReset}
                 onBackup={() => {
@@ -719,6 +768,7 @@ export function HouseDeckApp() {
                 }}
                 onChangeMascot={saveMascotImage}
                 onReset={resetPoints}
+                setHousePointDrafts={setHousePointDrafts}
               />
             )}
           </div>
@@ -1424,24 +1474,30 @@ function Reports({
 
 function Admin({
   houseTotals,
+  housePointDrafts,
   isAdmin,
   mascotImages,
   pendingProfiles,
+  onAwardHousePoints,
   onApproveProfile,
   onArchive,
   onBackup,
   onChangeMascot,
   onReset,
+  setHousePointDrafts,
 }: {
   houseTotals: HouseTotal[];
+  housePointDrafts: Record<HouseName, string>;
   isAdmin: boolean;
   mascotImages: Record<HouseName, string | null>;
   pendingProfiles: SupabaseProfile[];
+  onAwardHousePoints: (house: HouseName) => void;
   onApproveProfile: (profileId: string, role: SupabaseRole) => void;
   onArchive: () => void;
   onBackup: () => void;
   onChangeMascot: (house: HouseName, imageDataUrl: string | null) => void;
   onReset: () => void;
+  setHousePointDrafts: (value: Record<HouseName, string> | ((current: Record<HouseName, string>) => Record<HouseName, string>)) => void;
 }) {
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
@@ -1488,6 +1544,21 @@ function Admin({
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <input
+                    className="field max-w-[120px]"
+                    onChange={(event) =>
+                      setHousePointDrafts((current) => ({
+                        ...current,
+                        [house.house]: event.target.value,
+                      }))
+                    }
+                    placeholder="10"
+                    type="number"
+                    value={housePointDrafts[house.house]}
+                  />
+                  <button className="button-primary" onClick={() => onAwardHousePoints(house.house)} type="button">
+                    Add Points
+                  </button>
                   <label className="button-secondary cursor-pointer">
                     Upload Mascot
                     <input
@@ -1841,10 +1912,15 @@ function ActivityList({
     <div className="grid gap-2">
       {transactions.map((transaction) => {
         const student = students.find((item) => item.id === transaction.studentId);
+        const subject = student
+          ? `${student.firstName} ${student.lastName}`
+          : transaction.house
+            ? `${transaction.house} House`
+            : "House";
         return (
           <div className="rounded-lg border border-white/10 bg-black/20 p-3" key={transaction.id}>
             <div className="flex items-center justify-between gap-3">
-              <p className="font-medium">{student ? `${student.firstName} ${student.lastName}` : "Student"}</p>
+              <p className="font-medium">{subject}</p>
               <span className="font-mono text-sm font-semibold">{transaction.points > 0 ? `+${transaction.points}` : transaction.points}</span>
             </div>
             <p className="mt-1 text-sm text-white/55">{transaction.category} by {transaction.teacher} - {transaction.reason}</p>
@@ -1862,20 +1938,27 @@ type HouseTotal = {
   percent: number;
 };
 
-function getHouseTotals(sourceStudents: Student[]): HouseTotal[] {
+function getHouseTotals(sourceStudents: Student[], sourceTransactions: Transaction[]): HouseTotal[] {
   const maxPoints = Math.max(
     1,
     ...houses.map((house) =>
       sourceStudents
         .filter((student) => student.house === house)
-        .reduce((sum, student) => sum + student.points, 0),
+        .reduce((sum, student) => sum + student.points, 0) +
+      sourceTransactions
+        .filter((transaction) => transaction.house === house && !transaction.studentId)
+        .reduce((sum, transaction) => sum + transaction.points, 0),
     ),
   );
 
   return houses
     .map((house) => {
       const houseStudents = sourceStudents.filter((student) => student.house === house);
-      const points = houseStudents.reduce((sum, student) => sum + student.points, 0);
+      const studentPoints = houseStudents.reduce((sum, student) => sum + student.points, 0);
+      const bonusPoints = sourceTransactions
+        .filter((transaction) => transaction.house === house && !transaction.studentId)
+        .reduce((sum, transaction) => sum + transaction.points, 0);
+      const points = studentPoints + bonusPoints;
       return {
         house,
         points,
@@ -1930,9 +2013,14 @@ function transactionsToCsv(transactions: Transaction[], students: Student[]) {
     "date,student,points,category,reason,teacher",
     ...transactions.map((transaction) => {
       const student = students.find((item) => item.id === transaction.studentId);
+      const subject = student
+        ? `${student.firstName} ${student.lastName}`
+        : transaction.house
+          ? `${transaction.house} House`
+          : "House";
       return [
         transaction.date,
-        student ? `${student.firstName} ${student.lastName}` : "Student",
+        subject,
         transaction.points,
         transaction.category,
         transaction.reason,

@@ -48,7 +48,8 @@ create table if not exists public.hd_students (
 
 create table if not exists public.hd_point_transactions (
   id uuid primary key default gen_random_uuid(),
-  student_id uuid not null references public.hd_students(id) on delete cascade,
+  student_id uuid references public.hd_students(id) on delete cascade,
+  house text check (house in ('Red', 'Blue', 'Yellow', 'Green')),
   points integer not null,
   category text not null,
   reason text not null default '',
@@ -56,6 +57,16 @@ create table if not exists public.hd_point_transactions (
   teacher_name text not null default '',
   created_at timestamptz not null default now()
 );
+
+alter table public.hd_point_transactions
+  add column if not exists house text;
+
+alter table public.hd_point_transactions
+  drop constraint if exists hd_point_transactions_house_check;
+
+alter table public.hd_point_transactions
+  add constraint hd_point_transactions_house_check
+  check (house in ('Red', 'Blue', 'Yellow', 'Green') or house is null);
 
 create table if not exists public.hd_audit_events (
   id uuid primary key default gen_random_uuid(),

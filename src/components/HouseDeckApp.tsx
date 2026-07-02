@@ -701,6 +701,7 @@ export function HouseDeckApp() {
           <nav className="mt-6 hidden lg:grid lg:grid-cols-1 lg:gap-2">
             {visibleViews.map((view) => (
               <button
+                aria-current={activeView === view ? "page" : undefined}
                 key={view}
                 className={`rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
                   activeView === view
@@ -864,6 +865,7 @@ export function HouseDeckApp() {
         <nav aria-label="Mobile navigation" className="mobile-nav">
           {visibleViews.map((view) => (
             <button
+              aria-current={activeView === view ? "page" : undefined}
               key={view}
               className={`mobile-nav-item ${activeView === view ? "mobile-nav-item-active" : ""}`}
               onClick={() => setActiveView(view)}
@@ -959,6 +961,7 @@ function Dashboard({
           <div className="grid gap-3 sm:grid-cols-2">
             {todayHouseTotals.map((entry) => (
               <button
+                aria-label={`Open today's ${entry.house} House transactions`}
                 className="dashboard-chip rounded-xl p-4 text-left transition hover:border-white/25 hover:bg-white/[0.08]"
                 key={entry.house}
                 onClick={() =>
@@ -989,6 +992,7 @@ function Dashboard({
             ) : (
               todayTeacherTotals.slice(0, 6).map((entry) => (
                 <button
+                  aria-label={`Open today's transactions for ${entry.teacher}`}
                   className="dashboard-chip flex items-center justify-between rounded-xl p-4 text-left transition hover:border-white/25 hover:bg-white/[0.08]"
                   key={entry.teacher}
                   onClick={() =>
@@ -2386,7 +2390,7 @@ function ModalHeader({ onClose, title }: { onClose: () => void; title: string })
   return (
     <div className="flex items-center justify-between gap-4">
       <h2 className="text-xl font-semibold">{title}</h2>
-      <button className="button-compact" onClick={onClose} type="button">Close</button>
+      <button aria-label={`Close ${title}`} className="button-compact" onClick={onClose} type="button">Close</button>
     </div>
   );
 }
@@ -2415,6 +2419,8 @@ function Toast({ message }: { message: string }) {
   return (
     <div
       aria-live="polite"
+      aria-atomic="true"
+      role="status"
       className={`toast-shell fixed bottom-24 right-4 z-40 max-w-[min(92vw,420px)] px-4 py-3 pl-7 text-sm text-white shadow-2xl shadow-black/40 lg:bottom-4 ${borderClass}`}
     >
       <span aria-hidden="true" className={`toast-accent ${accentClass}`} />
@@ -2503,7 +2509,12 @@ function HouseRow({
   }
 
   return (
-    <button className="text-left" onClick={onClick} type="button">
+    <button
+      aria-label={`Open ${house.house} House transactions`}
+      className="text-left"
+      onClick={onClick}
+      type="button"
+    >
       {content}
     </button>
   );
@@ -2520,6 +2531,7 @@ function StudentList({
     <div className="grid gap-2">
       {students.map((student, index) => (
         <button
+          aria-label={`Open transactions for ${student.firstName} ${student.lastName}`}
           className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 p-3 text-left transition hover:border-white/20 hover:bg-black/30"
           key={student.id}
           onClick={() => onSelectStudent?.(student)}
@@ -2572,7 +2584,13 @@ function ActivityList({
         }
 
         return (
-          <button className="text-left" key={transaction.id} onClick={() => onSelectTransaction(transaction)} type="button">
+          <button
+            aria-label={`Open transaction details for ${subject}, ${transaction.category}, ${transaction.teacher}`}
+            className="text-left"
+            key={transaction.id}
+            onClick={() => onSelectTransaction(transaction)}
+            type="button"
+          >
             {content}
           </button>
         );

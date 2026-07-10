@@ -5,15 +5,18 @@
   "scripts": {
     "dev": "next dev --webpack --hostname 127.0.0.1 --port 3020",
     "build": "next build --webpack",
+    "build:sites": "vinext build",
     "start": "next start --hostname 127.0.0.1 --port 3020",
     "lint": "eslint"
   },
   "dependencies": {
     "next": "16.2.9",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "1.37.1",
+    "@vitejs/plugin-rsc": "0.5.26",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -21,6 +24,10 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
-    "typescript": "^5"
-  }
+    "typescript": "^5",
+    "vinext": "0.0.50",
+    "vite": "8.0.13",
+    "wrangler": "4.92.0"
+  },
+  "type": "module"
 }

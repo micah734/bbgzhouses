@@ -424,8 +424,10 @@ $$;
 revoke execute on function public.hd_award_points_bulk(uuid[], integer, text, text) from public, anon;
 grant execute on function public.hd_award_points_bulk(uuid[], integer, text, text) to authenticated;
 
-revoke execute on function public.hd_is_admin() from public, anon, authenticated;
-revoke execute on function public.hd_is_approved() from public, anon, authenticated;
+revoke execute on function public.hd_is_admin() from public, anon;
+grant execute on function public.hd_is_admin() to authenticated;
+revoke execute on function public.hd_is_approved() from public, anon;
+grant execute on function public.hd_is_approved() to authenticated;
 revoke execute on function public.hd_profiles_guard() from public, anon, authenticated;
 
 create index if not exists hd_students_active_name_idx

@@ -413,3 +413,140 @@ textarea:focus-visible {
     transform: translateX(-50%);
   }
 }
+
+/* HouseDeck visual system: warm paper, ink, and four house accents. */
+body {
+  background: #f4f1eb;
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at 4% 0%, rgb(226 59 59 / 0.18), transparent 24rem),
+    radial-gradient(circle at 96% 4%, rgb(52 120 246 / 0.15), transparent 26rem),
+    radial-gradient(circle at 50% 100%, rgb(34 160 107 / 0.12), transparent 30rem),
+    #f4f1eb !important;
+  color: #20242a !important;
+}
+
+.app-shell::before {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image: linear-gradient(rgb(32 36 42 / 0.04) 1px, transparent 1px), linear-gradient(90deg, rgb(32 36 42 / 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  content: "";
+}
+
+.app-sidebar {
+  z-index: 1;
+  border-color: rgb(32 36 42 / 0.1) !important;
+  background: rgb(255 255 255 / 0.7) !important;
+  box-shadow: 12px 0 40px rgb(43 39 31 / 0.06);
+  backdrop-filter: blur(18px);
+}
+
+.app-sidebar p,
+.app-sidebar button,
+.app-sidebar span {
+  color: #20242a;
+}
+
+.app-sidebar .text-white\/55,
+.app-sidebar .text-white\/50,
+.app-sidebar .text-white\/60,
+.app-sidebar .text-white\/68 {
+  color: #697078 !important;
+}
+
+.app-sidebar nav button[aria-current="page"] {
+  background: #20242a !important;
+  color: #fffdf8 !important;
+  box-shadow: 0 8px 18px rgb(32 36 42 / 0.16);
+}
+
+.app-sidebar nav button:hover:not([aria-current="page"]) {
+  background: rgb(32 36 42 / 0.07) !important;
+}
+
+.app-main {
+  z-index: 1;
+}
+
+.app-main h1,
+.app-main h2,
+.app-main h3,
+.app-main p,
+.app-main span,
+.app-main button,
+.app-main label {
+  color: #20242a;
+}
+
+.app-main .text-white\/45,
+.app-main .text-white\/55,
+.app-main .text-white\/58,
+.app-main .text-white\/60,
+.app-main .text-white\/65,
+.app-main .text-white\/68,
+.app-main .text-white\/70 {
+  color: #697078 !important;
+}
+
+.app-main .mobile-header-shell {
+  border-color: rgb(32 36 42 / 0.1);
+  background: rgb(255 255 255 / 0.68);
+  box-shadow: 0 12px 30px rgb(43 39 31 / 0.06);
+}
+
+.app-main .panel-shell,
+.app-main .metric-shell,
+.app-main .dashboard-chip,
+.app-main .login-shell {
+  border-color: rgb(32 36 42 / 0.1);
+  background: rgb(255 255 255 / 0.78);
+  color: #20242a;
+  box-shadow: 0 14px 36px rgb(43 39 31 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.8);
+  backdrop-filter: blur(14px);
+}
+
+.app-main .dashboard-chip:hover,
+.app-main .metric-shell:hover {
+  border-color: rgb(32 36 42 / 0.25);
+  background: #fffdf8;
+  transform: translateY(-2px);
+}
+
+.app-main .field {
+  border-color: rgb(32 36 42 / 0.14);
+  background: #fffdf8;
+  color: #20242a;
+}
+
+.app-main .field::placeholder { color: #8a9096; }
+.app-main .field option { background: #fffdf8; color: #20242a; }
+
+.app-main .button-primary {
+  background: #20242a;
+  color: #fffdf8;
+  box-shadow: 0 8px 18px rgb(32 36 42 / 0.15);
+}
+
+.app-main .button-primary:hover { background: #3a424b; }
+
+.app-main .button-secondary,
+.app-main .button-compact {
+  border-color: rgb(32 36 42 / 0.14);
+  background: rgb(255 255 255 / 0.7);
+  color: #20242a;
+}
+
+.app-main .button-secondary:hover,
+.app-main .button-compact:hover { background: #fffdf8; }
+
+@media (max-width: 1023px) {
+  .app-sidebar { background: rgb(255 255 255 / 0.86) !important; }
+  .mobile-nav { background: rgb(255 255 255 / 0.94); border-color: rgb(32 36 42 / 0.1); box-shadow: 0 -10px 40px rgb(43 39 31 / 0.12); }
+  .mobile-nav-item { color: #697078; }
+  .mobile-nav-item-active { background: #20242a; color: #fffdf8; }
+}

@@ -701,7 +701,7 @@ export function HouseDeckApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050609] text-white">
+    <div className="app-shell min-h-screen bg-[#050609] text-white">
       <div className="pointer-events-none fixed inset-0 opacity-70">
         <div className="absolute left-[-10%] top-[-20%] size-[520px] rounded-full bg-red-600/20 blur-3xl" />
         <div className="absolute right-[-8%] top-16 size-[500px] rounded-full bg-blue-600/20 blur-3xl" />
@@ -709,7 +709,7 @@ export function HouseDeckApp() {
       </div>
 
       <div className="relative grid min-h-screen lg:grid-cols-[270px_1fr]">
-        <aside className="border-b border-white/10 bg-black/45 px-4 py-4 backdrop-blur-xl lg:flex lg:min-h-screen lg:flex-col lg:border-b-0 lg:border-r">
+        <aside className="app-sidebar border-b border-white/10 bg-black/45 px-4 py-4 backdrop-blur-xl lg:flex lg:min-h-screen lg:flex-col lg:border-b-0 lg:border-r">
           <div className="flex items-center gap-3">
             <div className="relative size-11 overflow-hidden rounded-lg border border-yellow-200/30 bg-black">
               <Image alt="HouseDeck lion logo" className="object-cover" fill sizes="44px" src="/brand/lion.png" />
@@ -761,7 +761,7 @@ export function HouseDeckApp() {
 
         </aside>
 
-        <main className="min-w-0 px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:pb-6">
+        <main className="app-main min-w-0 px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:pb-6">
           <header className="mobile-header-shell flex flex-col gap-4 p-4 md:border-b-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-0">
             <div className="flex items-start justify-between gap-4 md:items-center">
               <div className="min-w-0">

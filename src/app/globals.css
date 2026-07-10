@@ -550,3 +550,133 @@ body {
   .mobile-nav-item { color: #697078; }
   .mobile-nav-item-active { background: #20242a; color: #fffdf8; }
 }
+
+/* Keep the original HouseDeck atmosphere: dark, focused, and easy on the eyes. */
+html,
+body {
+  overflow-x: hidden;
+}
+
+body {
+  background: #050609;
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at 4% 0%, rgb(226 59 59 / 0.18), transparent 24rem),
+    radial-gradient(circle at 96% 4%, rgb(52 120 246 / 0.15), transparent 26rem),
+    radial-gradient(circle at 50% 100%, rgb(34 160 107 / 0.12), transparent 30rem),
+    #050609 !important;
+  color: #fff !important;
+}
+
+.app-sidebar {
+  border-color: rgb(255 255 255 / 0.1) !important;
+  background: rgb(0 0 0 / 0.45) !important;
+  box-shadow: none;
+}
+
+.app-sidebar p,
+.app-sidebar button,
+.app-sidebar span,
+.app-main h1,
+.app-main h2,
+.app-main h3,
+.app-main p,
+.app-main span,
+.app-main button,
+.app-main label {
+  color: inherit;
+}
+
+.app-sidebar .text-white\/55,
+.app-sidebar .text-white\/50,
+.app-sidebar .text-white\/60,
+.app-sidebar .text-white\/68,
+.app-main .text-white\/45,
+.app-main .text-white\/55,
+.app-main .text-white\/58,
+.app-main .text-white\/60,
+.app-main .text-white\/65,
+.app-main .text-white\/68,
+.app-main .text-white\/70 {
+  color: revert-layer !important;
+}
+
+.app-main .mobile-header-shell {
+  border-color: rgb(255 255 255 / 0.1);
+  background: revert-layer;
+  box-shadow: revert-layer;
+}
+
+.app-main .panel-shell,
+.app-main .metric-shell,
+.app-main .dashboard-chip,
+.app-main .login-shell {
+  border-color: rgb(255 255 255 / 0.1);
+  background: revert-layer;
+  color: #fff;
+  box-shadow: revert-layer;
+}
+
+.app-main .dashboard-chip:hover,
+.app-main .metric-shell:hover {
+  border-color: rgb(255 255 255 / 0.25);
+  background: revert-layer;
+}
+
+.app-main .field {
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+}
+
+.app-main .field::placeholder { color: rgb(255 255 255 / 0.38); }
+.app-main .field option { background: #080a0f; color: #fff; }
+
+.app-main .button-primary {
+  background: #fff;
+  color: #07080c;
+}
+
+.app-main .button-primary:hover { background: #fef3c7; }
+
+.app-main .button-secondary,
+.app-main .button-compact {
+  border-color: rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.08);
+  color: #fff;
+}
+
+.app-main .button-secondary:hover,
+.app-main .button-compact:hover { background: rgb(255 255 255 / 0.14); }
+
+@media (max-width: 767px) {
+  .app-main,
+  .app-main > div,
+  .app-main section,
+  .app-main article,
+  .app-main form {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .app-main .grid {
+    min-width: 0;
+  }
+
+  .app-main input,
+  .app-main select,
+  .app-main textarea,
+  .app-main button {
+    max-width: 100%;
+  }
+
+  .app-main .mobile-header-shell {
+    overflow: hidden;
+  }
+
+  .mobile-more-sheet {
+    max-width: calc(100vw - 1rem);
+  }
+}

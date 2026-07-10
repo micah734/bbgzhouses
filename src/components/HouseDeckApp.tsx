@@ -2110,7 +2110,7 @@ function Admin({
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
-      <Panel action="Admin only" title="Settings">
+      <Panel className="lg:order-2" action="Admin only" title="Settings">
         <div className="grid gap-4">
           <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
             <p className="font-semibold">Branding</p>
@@ -2130,7 +2130,7 @@ function Admin({
           </p>
         </div>
       </Panel>
-      <Panel action="Locked colors" title="House Controls">
+      <Panel className="lg:order-3" action="Locked colors" title="House Controls">
         <div className="grid gap-3">
           {houseTotals.map((house) => (
             <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3" key={house.house}>
@@ -2200,7 +2200,7 @@ function Admin({
           ))}
         </div>
       </Panel>
-      <Panel action={`${pendingProfiles.length} waiting`} title="Access Requests">
+      <Panel className="max-w-xl lg:order-4" action={`${pendingProfiles.length} waiting`} title="Access Requests">
         <div className="grid gap-3">
           {pendingProfiles.length === 0 ? (
             <p className="text-sm text-white/55">No teacher signups are waiting for approval right now.</p>
@@ -2236,7 +2236,7 @@ function Admin({
           )}
         </div>
       </Panel>
-      <div ref={historyPanelRef}>
+      <div className="lg:order-1" ref={historyPanelRef}>
       <Panel action={`${sortedTransactions.length} shown`} title="Transaction History">
         <div className="grid gap-3">
           {hasActiveHistoryFilters ? (
@@ -2655,9 +2655,9 @@ function MobileNavIcon({
   );
 }
 
-function Panel({ action, children, title }: { action?: string; children: React.ReactNode; title: string }) {
+function Panel({ action, children, className = "", title }: { action?: string; children: React.ReactNode; className?: string; title: string }) {
   return (
-    <section className="panel-shell p-5">
+    <section className={`panel-shell p-5 ${className}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">{title}</h2>
         {action ? <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-medium text-white/50">{action}</span> : null}

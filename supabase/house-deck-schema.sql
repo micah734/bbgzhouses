@@ -304,3 +304,138 @@ grant select, insert, update on public.hd_students to authenticated;
 grant select, insert on public.hd_point_transactions to authenticated;
 grant select, insert on public.hd_audit_events to authenticated;
 grant select, insert on public.hd_term_archives to authenticated;
+
+create or replace function public.hd_award_points(
+  p_student_id uuid,
+  p_points integer,
+  p_category text,
+  p_reason text default ''
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_student public.hd_students;
+  v_transaction public.hd_point_transactions;
+  v_teacher public.hd_profiles;
+begin
+  if auth.uid() is null or not public.hd_is_approved() then
+    raise exception 'Only approved staff can award points.' using errcode = '42501';
+  end if;
+
+  if p_points = 0 then
+    raise exception 'Point value cannot be zero.' using errcode = '22023';
+  end if;
+
+  select * into v_teacher from public.hd_profiles where id = auth.uid();
+
+  update public.hd_students
+  set points = points + p_points,
+      updated_at = now()
+  where id = p_student_id and active = true
+  returning * into v_student;
+
+  if not found then
+    raise exception 'Student not found or inactive.' using errcode = 'P0002';
+  end if;
+
+  insert into public.hd_point_transactions (
+    student_id, points, category, reason, teacher_id, teacher_name
+  )
+  values (
+    p_student_id,
+    p_points,
+    nullif(trim(p_category), ''),
+    coalesce(nullif(trim(p_reason), ''), 'No note'),
+    auth.uid(),
+    coalesce(v_teacher.full_name, '')
+  )
+  returning * into v_transaction;
+
+  return jsonb_build_object(
+    'student', jsonb_build_object(
+      'id', v_student.id,
+      'first_name', v_student.first_name,
+      'last_name', v_student.last_name,
+      'grade', v_student.grade,
+      'family_id', v_student.family_id,
+      'house', v_student.house,
+      'points', v_student.points
+    ),
+    'transaction', jsonb_build_object(
+      'id', v_transaction.id,
+      'student_id', v_transaction.student_id,
+      'house', v_transaction.house,
+      'points', v_transaction.points,
+      'category', v_transaction.category,
+      'reason', v_transaction.reason,
+      'teacher_name', v_transaction.teacher_name,
+      'created_at', v_transaction.created_at
+    )
+  );
+end;
+$$;
+
+revoke execute on function public.hd_award_points(uuid, integer, text, text) from public, anon;
+grant execute on function public.hd_award_points(uuid, integer, text, text) to authenticated;
+
+create or replace function public.hd_award_points_bulk(
+  p_student_ids uuid[],
+  p_points integer,
+  p_category text,
+  p_reason text default ''
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_student_id uuid;
+  v_award jsonb;
+  v_result jsonb := '{"students": [], "transactions": []}'::jsonb;
+begin
+  if auth.uid() is null or not public.hd_is_approved() then
+    raise exception 'Only approved staff can award points.' using errcode = '42501';
+  end if;
+  if coalesce(array_length(p_student_ids, 1), 0) = 0 or array_length(p_student_ids, 1) > 100 then
+    raise exception 'Choose between 1 and 100 students.' using errcode = '22023';
+  end if;
+
+  foreach v_student_id in array p_student_ids loop
+    v_award := public.hd_award_points(v_student_id, p_points, p_category, p_reason);
+    v_result := jsonb_set(
+      v_result,
+      '{students}',
+      (v_result->'students') || (v_award->'student')
+    );
+    v_result := jsonb_set(
+      v_result,
+      '{transactions}',
+      (v_result->'transactions') || (v_award->'transaction')
+    );
+  end loop;
+  return v_result;
+end;
+$$;
+
+revoke execute on function public.hd_award_points_bulk(uuid[], integer, text, text) from public, anon;
+grant execute on function public.hd_award_points_bulk(uuid[], integer, text, text) to authenticated;
+
+revoke execute on function public.hd_is_admin() from public, anon, authenticated;
+revoke execute on function public.hd_is_approved() from public, anon, authenticated;
+revoke execute on function public.hd_profiles_guard() from public, anon, authenticated;
+
+create index if not exists hd_students_active_name_idx
+  on public.hd_students (active, last_name, first_name);
+create index if not exists hd_students_active_house_name_idx
+  on public.hd_students (active, house, last_name, first_name);
+create index if not exists hd_point_transactions_created_at_idx
+  on public.hd_point_transactions (created_at desc);
+create index if not exists hd_point_transactions_student_created_at_idx
+  on public.hd_point_transactions (student_id, created_at desc);
+create index if not exists hd_point_transactions_house_created_at_idx
+  on public.hd_point_transactions (house, created_at desc)
+  where house is not null;

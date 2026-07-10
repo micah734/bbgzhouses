@@ -41,6 +41,11 @@ type HouseDeckData = {
   transactions: Transaction[];
 };
 
+export type StudentSearchResult = {
+  students: Student[];
+  total: number;
+};
+
 type SupabaseStudentRow = {
   id: string;
   first_name: string;
@@ -251,6 +256,33 @@ export async function loadHouseDeckData(accessToken: string, userId: string) {
   } satisfies HouseDeckData;
 }
 
+export async function searchSupabaseStudents(
+  accessToken: string,
+  input: { house: "All" | HouseName; limit: number; offset: number; query: string },
+): Promise<StudentSearchResult> {
+  const filters = [
+    "active=eq.true",
+    "order=last_name.asc,first_name.asc",
+    `limit=${input.limit}`,
+    `offset=${input.offset}`,
+  ];
+  const query = input.query.trim();
+  if (input.house !== "All") filters.push(`house=eq.${encodeURIComponent(input.house)}`);
+  if (query) {
+    const escaped = query.replace(/[,.()]/g, " ").trim();
+    filters.push(`or=(first_name.ilike.*${encodeURIComponent(escaped)}*,last_name.ilike.*${encodeURIComponent(escaped)}*)`);
+  }
+
+  const response = await restFetch(`/hd_students?${filters.join("&")}`, accessToken, {
+    headers: { Prefer: "count=exact" },
+  });
+  const rows = (await response.json()) as SupabaseStudentRow[];
+  const range = response.headers.get("content-range");
+  const total = Number(range?.split("/")[1]) || rows.length;
+
+  return { students: rows.map(mapStudent), total };
+}
+
 export async function approveSupabaseProfile(
   accessToken: string,
   input: { profileId: string; role: SupabaseRole },
@@ -383,47 +415,63 @@ export async function awardSupabasePoints({
   points,
   reason,
   student,
-  teacherName,
 }: {
   accessToken: string;
   category: string;
   points: number;
   reason: string;
   student: Student;
-  teacherName: string;
 }) {
-  const updatedPoints = student.points + points;
-
-  const transactionResponse = await restFetch("/hd_point_transactions", accessToken, {
+  const response = await restFetch("/rpc/hd_award_points", accessToken, {
     body: JSON.stringify({
-      student_id: student.id,
-      points,
-      category,
-      reason,
-      teacher_name: teacherName,
+      p_category: category,
+      p_points: points,
+      p_reason: reason,
+      p_student_id: student.id,
     }),
-    headers: {
-      Prefer: "return=representation",
-    },
     method: "POST",
   });
-
-  const updateResponse = await restFetch(`/hd_students?id=eq.${student.id}`, accessToken, {
-    body: JSON.stringify({ points: updatedPoints }),
-    headers: {
-      Prefer: "return=representation",
-    },
-    method: "PATCH",
-  });
-
-  const [transactionRows, studentRows] = await Promise.all([
-    transactionResponse.json() as Promise<SupabaseTransactionRow[]>,
-    updateResponse.json() as Promise<SupabaseStudentRow[]>,
-  ]);
+  const payload = (await response.json()) as {
+    student: SupabaseStudentRow;
+    transaction: SupabaseTransactionRow;
+  };
 
   return {
-    student: mapStudent(studentRows[0]),
-    transaction: mapTransaction(transactionRows[0]),
+    student: mapStudent(payload.student),
+    transaction: mapTransaction(payload.transaction),
+  };
+}
+
+export async function awardSupabasePointsBulk({
+  accessToken,
+  category,
+  points,
+  reason,
+  studentIds,
+}: {
+  accessToken: string;
+  category: string;
+  points: number;
+  reason: string;
+  studentIds: string[];
+}) {
+  const response = await restFetch("/rpc/hd_award_points_bulk", accessToken, {
+    body: JSON.stringify({
+      p_category: category,
+      p_points: points,
+      p_reason: reason,
+      p_student_ids: studentIds,
+    }),
+    method: "POST",
+  });
+  const payload = (await response.json()) as {
+    students: SupabaseStudentRow[];
+    transactions: SupabaseTransactionRow[];
+  };
+
+  return {
+    students: payload.students.map(mapStudent),
+    transactions: payload.transactions.map(mapTransaction),
   };
 }
 

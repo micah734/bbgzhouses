@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, MouseEvent, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   HouseName,
   Student,
@@ -18,6 +18,7 @@ import {
   archiveSupabaseTerm,
   awardSupabaseHousePoints,
   awardSupabasePoints,
+  awardSupabasePointsBulk,
   createSupabaseStudent,
   ensureProfile,
   getStoredSession,
@@ -26,6 +27,7 @@ import {
   isSupabaseSessionExpiredError,
   loadHouseDeckData,
   resetSupabasePoints,
+  searchSupabaseStudents,
   signInWithPassword,
   signUpWithPassword,
   storeSession,
@@ -92,6 +94,7 @@ const mobilePrimaryViews: View[] = ["Dashboard", "Students"];
 
 const houses: HouseName[] = ["Red", "Blue", "Yellow", "Green"];
 const mascotStorageKey = "housedeck.mascots";
+const rosterPageSize = 40;
 
 const emptyStudentDraft: NewStudentDraft = {
   firstName: "",
@@ -101,11 +104,24 @@ const emptyStudentDraft: NewStudentDraft = {
   house: "Red",
 };
 
+function formatClock(date: Date) {
+  return new Intl.DateTimeFormat("en", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
+}
+
 export function HouseDeckApp() {
   const [activeView, setActiveView] = useState<View>("Dashboard");
   const [students, setStudents] = useState<Student[]>(seedStudents);
+  const [rosterStudents, setRosterStudents] = useState<Student[]>(seedStudents);
+  const [rosterTotal, setRosterTotal] = useState(seedStudents.length);
+  const [rosterPage, setRosterPage] = useState(0);
+  const [isRosterLoading, setIsRosterLoading] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>(seedTransactions);
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [houseFilter, setHouseFilter] = useState<"All" | HouseName>("All");
   const [selectedStudentId, setSelectedStudentId] = useState(seedStudents[0].id);
   const [pointAmount, setPointAmount] = useState(5);
@@ -118,7 +134,6 @@ export function HouseDeckApp() {
   const [toast, setToast] = useState("");
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
-  const [syncLabel, setSyncLabel] = useState("Syncing live data");
   const [session, setSession] = useState<SupabaseSession | null>(null);
   const [profile, setProfile] = useState<SupabaseProfile | null>(null);
   const [pendingProfiles, setPendingProfiles] = useState<SupabaseProfile[]>([]);
@@ -129,6 +144,7 @@ export function HouseDeckApp() {
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
   const [isAwardingPoints, setIsAwardingPoints] = useState(false);
+  const [bulkStudentIds, setBulkStudentIds] = useState<string[]>([]);
   const [isUndoingTransactionId, setIsUndoingTransactionId] = useState<string | null>(null);
   const [isAwardingHouse, setIsAwardingHouse] = useState<HouseName | null>(null);
   const [adminHistoryPreset, setAdminHistoryPreset] = useState<AdminHistoryPreset | null>(null);
@@ -173,6 +189,7 @@ export function HouseDeckApp() {
     const matchesHouse = houseFilter === "All" || student.house === houseFilter;
     return matchesQuery && matchesHouse;
   });
+  const displayedStudents = session && supabaseReady ? rosterStudents : filteredStudents;
   const selectedStudent =
     students.find((student) => student.id === selectedStudentId) ?? students[0];
 
@@ -210,22 +227,6 @@ export function HouseDeckApp() {
       notify(error instanceof Error ? error.message : "Could not load Supabase data.");
     }
   }, [expireSession, session, supabaseReady]);
-
-  useEffect(() => {
-    const updateSyncLabel = () => {
-      setSyncLabel(
-        new Intl.DateTimeFormat("en", {
-          hour: "numeric",
-          minute: "2-digit",
-          second: "2-digit",
-        }).format(new Date()),
-      );
-    };
-
-    updateSyncLabel();
-    const interval = window.setInterval(updateSyncLabel, 1000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -275,6 +276,41 @@ export function HouseDeckApp() {
   useEffect(() => {
     setMobileMoreOpen(false);
   }, [activeView]);
+
+  useEffect(() => {
+    setRosterPage(0);
+  }, [houseFilter, deferredQuery]);
+
+  useEffect(() => {
+    if (activeView !== "Students" || !session || !supabaseReady) return;
+
+    let cancelled = false;
+    setIsRosterLoading(true);
+    const timeout = window.setTimeout(() => {
+      void searchSupabaseStudents(session.access_token, {
+        house: houseFilter,
+        limit: rosterPageSize,
+        offset: rosterPage * rosterPageSize,
+        query: deferredQuery,
+      })
+        .then((result) => {
+          if (cancelled) return;
+          setRosterStudents(result.students);
+          setRosterTotal(result.total);
+        })
+        .catch((error) => {
+          if (!cancelled) notify(error instanceof Error ? error.message : "Could not load students.");
+        })
+        .finally(() => {
+          if (!cancelled) setIsRosterLoading(false);
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [activeView, deferredQuery, houseFilter, rosterPage, session, supabaseReady]);
 
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -455,7 +491,7 @@ export function HouseDeckApp() {
     }
   };
 
-  const awardPoints = async () => {
+  const awardPoints = async (studentIds = [selectedStudent.id]) => {
     if (!selectedStudent || isAwardingPoints) return;
 
     setIsAwardingPoints(true);
@@ -472,27 +508,35 @@ export function HouseDeckApp() {
 
       const result =
         session && supabaseReady
-          ? await awardSupabasePoints({
+          ? studentIds.length === 1
+            ? await awardSupabasePoints({
               accessToken: session.access_token,
               category: pointCategory,
               points: pointAmount,
               reason: pointReason.trim() || "No note",
               student: selectedStudent,
-              teacherName: session.user.email ?? "Teacher",
+              })
+            : await awardSupabasePointsBulk({
+              accessToken: session.access_token,
+              category: pointCategory,
+              points: pointAmount,
+              reason: pointReason.trim() || "No note",
+              studentIds,
             })
           : {
               student: { ...selectedStudent, points: selectedStudent.points + pointAmount },
               transaction: fallbackTransaction,
             };
 
-      setStudents((current) =>
-        current.map((student) =>
-          student.id === selectedStudent.id ? result.student : student,
-        ),
-      );
-      setTransactions((current) => [result.transaction, ...current]);
+      const savedStudents = "students" in result ? result.students : [result.student];
+      const savedTransactions = "transactions" in result ? result.transactions : [result.transaction];
+      const savedStudentById = new Map(savedStudents.map((student) => [student.id, student]));
+      setStudents((current) => current.map((student) => savedStudentById.get(student.id) ?? student));
+      setRosterStudents((current) => current.map((student) => savedStudentById.get(student.id) ?? student));
+      setTransactions((current) => [...savedTransactions, ...current]);
+      setBulkStudentIds([]);
       setPointReason("");
-      notify(`${pointAmount > 0 ? "+" : ""}${pointAmount} points saved.`);
+      notify(`${pointAmount > 0 ? "+" : ""}${pointAmount} points saved for ${savedStudents.length} student${savedStudents.length === 1 ? "" : "s"}.`);
     } catch (error) {
       if (isSupabaseSessionExpiredError(error)) {
         expireSession();
@@ -681,7 +725,6 @@ export function HouseDeckApp() {
         mascotImages={mascotImages}
         onBack={() => setActiveView("Dashboard")}
         students={sortedStudents}
-        syncLabel={syncLabel}
         transactions={transactions}
       />
     );
@@ -810,7 +853,7 @@ export function HouseDeckApp() {
             )}
             {activeView === "Students" && (
               <Students
-                filteredStudents={filteredStudents}
+                filteredStudents={displayedStudents}
                 houseFilter={houseFilter}
                 isAdmin={isAdmin}
                 onAward={awardPoints}
@@ -824,14 +867,20 @@ export function HouseDeckApp() {
                 pointReason={pointReason}
                 query={query}
                 isAwardingPoints={isAwardingPoints}
+                isRosterLoading={isRosterLoading}
+                bulkStudentIds={bulkStudentIds}
                 selectedStudent={selectedStudent}
                 setPointAmount={setPointAmount}
                 setPointCategory={setPointCategory}
                 setPointReason={setPointReason}
+                setBulkStudentIds={setBulkStudentIds}
                 setHouseFilter={setHouseFilter}
                 setQuery={setQuery}
                 setSelectedStudentId={setSelectedStudentId}
-                students={sortedStudents}
+                rosterPage={rosterPage}
+                rosterTotal={session && supabaseReady ? rosterTotal : filteredStudents.length}
+                setRosterPage={setRosterPage}
+                students={displayedStudents}
               />
             )}
             {activeView === "Assignment" && (
@@ -1326,6 +1375,8 @@ function Students({
   onImport,
   onManage,
   isAwardingPoints,
+  isRosterLoading,
+  bulkStudentIds,
   pointAmount,
   pointCategory,
   pointReason,
@@ -1334,21 +1385,27 @@ function Students({
   setPointAmount,
   setPointCategory,
   setPointReason,
+  setBulkStudentIds,
   setHouseFilter,
   setQuery,
   setSelectedStudentId,
+  rosterPage,
+  rosterTotal,
+  setRosterPage,
   students,
 }: {
   filteredStudents: Student[];
   houseFilter: "All" | HouseName;
   isAdmin: boolean;
-  onAward: () => void;
+  onAward: (studentIds?: string[]) => void | Promise<void>;
   onAdd: () => void;
   onEdit: (student: Student) => void;
   onExport: () => void;
   onImport: () => void;
   onManage: (studentId: string) => void;
   isAwardingPoints: boolean;
+  isRosterLoading: boolean;
+  bulkStudentIds: string[];
   pointAmount: number;
   pointCategory: string;
   pointReason: string;
@@ -1357,12 +1414,22 @@ function Students({
   setPointAmount: (value: number) => void;
   setPointCategory: (value: string) => void;
   setPointReason: (value: string) => void;
+  setBulkStudentIds: (value: string[] | ((current: string[]) => string[])) => void;
   setHouseFilter: (value: "All" | HouseName) => void;
   setQuery: (value: string) => void;
   setSelectedStudentId: (value: string) => void;
+  rosterPage: number;
+  rosterTotal: number;
+  setRosterPage: (value: number | ((current: number) => number)) => void;
   students: Student[];
 }) {
   const awardPanelRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const toggleBulkStudent = (studentId: string) => {
+    setBulkStudentIds((current) =>
+      current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId],
+    );
+  };
   const handleManageStudent = (studentId: string) => {
     onManage(studentId);
     window.requestAnimationFrame(() => {
@@ -1372,11 +1439,24 @@ function Students({
 
   return (
     <div className="grid gap-5">
-      <Panel action={`${filteredStudents.length} shown`} title="Student Roster">
+      <Panel action={isRosterLoading ? "Searching…" : `${rosterTotal} students`} title="Student Roster">
         <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px_auto_auto_auto]">
           <label className="grid gap-1 text-sm font-medium">
             Search
-            <input className="field" onChange={(event) => setQuery(event.target.value)} placeholder="Search by student name" value={query} />
+            <input
+              autoFocus
+              className="field"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && filteredStudents.length > 0) {
+                  event.preventDefault();
+                  handleManageStudent(filteredStudents[0].id);
+                }
+              }}
+              placeholder="Search by student name"
+              ref={searchInputRef}
+              value={query}
+            />
           </label>
           <label className="grid gap-1 text-sm font-medium">
             House
@@ -1395,6 +1475,12 @@ function Students({
             <button className="button-primary min-h-11 self-end justify-center" onClick={onAdd} type="button">Add Student</button>
           ) : null}
         </div>
+        {bulkStudentIds.length > 0 ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-yellow-200/20 bg-yellow-200/[0.08] p-3">
+            <p className="text-sm font-medium">{bulkStudentIds.length} selected for the same award.</p>
+            <button className="button-secondary" onClick={() => setBulkStudentIds([])} type="button">Clear selection</button>
+          </div>
+        ) : null}
         <div className="mb-4 rounded-2xl border border-yellow-200/15 bg-yellow-200/[0.06] p-3 md:hidden">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-yellow-100/60">Selected for points</p>
           <div className="mt-2 flex items-center justify-between gap-3">
@@ -1439,6 +1525,13 @@ function Students({
                 <span className="font-mono text-white">{student.points} pts</span>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  className={bulkStudentIds.includes(student.id) ? "button-secondary justify-center" : "button-compact justify-center"}
+                  onClick={() => toggleBulkStudent(student.id)}
+                  type="button"
+                >
+                  {bulkStudentIds.includes(student.id) ? "Selected" : "Select"}
+                </button>
                 {isAdmin ? (
                   <button
                     aria-label={`Edit ${student.firstName} ${student.lastName}`}
@@ -1506,6 +1599,13 @@ function Students({
                       >
                         Award
                       </button>
+                      <button
+                        className={bulkStudentIds.includes(student.id) ? "button-secondary" : "button-compact"}
+                        onClick={() => toggleBulkStudent(student.id)}
+                        type="button"
+                      >
+                        {bulkStudentIds.includes(student.id) ? "Selected" : "Select"}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -1513,11 +1613,26 @@ function Students({
             </tbody>
           </table>
         </div>
+        {rosterTotal > rosterPageSize ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4 text-sm text-white/60">
+            <span>
+              Showing {rosterPage * rosterPageSize + 1}–{Math.min((rosterPage + 1) * rosterPageSize, rosterTotal)} of {rosterTotal}
+            </span>
+            <div className="flex gap-2">
+              <button className="button-compact disabled:cursor-not-allowed disabled:opacity-40" disabled={rosterPage === 0 || isRosterLoading} onClick={() => setRosterPage((page) => Math.max(0, page - 1))} type="button">Previous</button>
+              <button className="button-compact disabled:cursor-not-allowed disabled:opacity-40" disabled={(rosterPage + 1) * rosterPageSize >= rosterTotal || isRosterLoading} onClick={() => setRosterPage((page) => page + 1)} type="button">Next</button>
+            </div>
+          </div>
+        ) : null}
       </Panel>
 
       <div ref={awardPanelRef}>
         <Points
-          onAward={onAward}
+          onAward={async () => {
+            await onAward(bulkStudentIds.length > 0 ? bulkStudentIds : undefined);
+            window.setTimeout(() => searchInputRef.current?.focus(), 0);
+          }}
+          bulkCount={bulkStudentIds.length}
           isAwardingPoints={isAwardingPoints}
           pointAmount={pointAmount}
           pointCategory={pointCategory}
@@ -1534,6 +1649,7 @@ function Students({
 
 function Points({
   onAward,
+  bulkCount,
   isAwardingPoints,
   pointAmount,
   pointCategory,
@@ -1543,7 +1659,8 @@ function Points({
   setPointCategory,
   setPointReason,
 }: {
-  onAward: () => void;
+  onAward: () => void | Promise<void>;
+  bulkCount: number;
   isAwardingPoints: boolean;
   pointAmount: number;
   pointCategory: string;
@@ -1553,6 +1670,10 @@ function Points({
   setPointCategory: (value: string) => void;
   setPointReason: (value: string) => void;
 }) {
+  const handleAward = async () => {
+    await onAward();
+  };
+
   return (
     <div>
       <Panel action="Few taps" title="Award Points">
@@ -1604,10 +1725,12 @@ function Points({
             <textarea className="field min-h-24" disabled={isAwardingPoints} onChange={(event) => setPointReason(event.target.value)} placeholder="Add a short note for the activity feed and audit log" value={pointReason} />
           </label>
           <div className="sticky bottom-3 z-10 md:static">
-            <button className="button-primary w-full justify-center py-4 text-base shadow-2xl shadow-black/40 disabled:cursor-not-allowed disabled:opacity-60 md:py-3 md:text-sm md:shadow-none" disabled={isAwardingPoints} onClick={onAward} type="button">
+            <button className="button-primary w-full justify-center py-4 text-base shadow-2xl shadow-black/40 disabled:cursor-not-allowed disabled:opacity-60 md:py-3 md:text-sm md:shadow-none" disabled={isAwardingPoints} onClick={() => void handleAward()} type="button">
               {isAwardingPoints
                 ? `Saving for ${selectedStudent.firstName}...`
-                : `Award ${pointAmount > 0 ? `+${pointAmount}` : pointAmount} Points to ${selectedStudent.firstName}`}
+                : bulkCount > 0
+                  ? `Award ${pointAmount > 0 ? `+${pointAmount}` : pointAmount} Points to ${bulkCount} Students`
+                  : `Award ${pointAmount > 0 ? `+${pointAmount}` : pointAmount} Points to ${selectedStudent.firstName}`}
             </button>
           </div>
         </div>
@@ -1668,19 +1791,23 @@ function Scoreboard({
   mascotImages,
   onBack,
   students,
-  syncLabel,
   transactions,
 }: {
   houseTotals: HouseTotal[];
   mascotImages: Record<HouseName, string | null>;
   onBack: () => void;
   students: Student[];
-  syncLabel: string;
   transactions: Transaction[];
 }) {
+  const [syncLabel, setSyncLabel] = useState(() => formatClock(new Date()));
   const leadingHouse = houseTotals[0];
   const pointGap = houseTotals[0].points - houseTotals[1].points;
   const tickerItems = [...transactions, ...transactions];
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setSyncLabel(formatClock(new Date())), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen overflow-hidden bg-[#030407] text-white">
@@ -1871,6 +1998,7 @@ function Admin({
   const [historyDateFilter, setHistoryDateFilter] = useState("");
   const [historyDateRange, setHistoryDateRange] = useState<"all" | "today" | "week" | "month">("all");
   const [historySort, setHistorySort] = useState<"newest" | "oldest" | "points-high" | "points-low">("newest");
+  const [historyPage, setHistoryPage] = useState(0);
   const historyPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1950,6 +2078,11 @@ function Admin({
     [sortedTransactions],
   );
   const filteredNetPoints = filteredPositivePoints + filteredDeductions;
+  const historyPageSize = 20;
+  const pagedTransactions = sortedTransactions.slice(
+    historyPage * historyPageSize,
+    (historyPage + 1) * historyPageSize,
+  );
   const hasActiveHistoryFilters =
     historyQuery.trim().length > 0 ||
     historyHouseFilter !== "All" ||
@@ -1970,6 +2103,10 @@ function Admin({
   ]
     .filter(Boolean)
     .join(" / ");
+
+  useEffect(() => {
+    setHistoryPage(0);
+  }, [historyDateFilter, historyDateRange, historyHouseFilter, historyQuery, historySort]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_420px]">
@@ -2230,7 +2367,7 @@ function Admin({
           {sortedTransactions.length === 0 ? (
             <p className="text-sm text-white/55">No points have been recorded yet.</p>
           ) : (
-            sortedTransactions.slice(0, 20).map((transaction) => {
+            pagedTransactions.map((transaction) => {
               const student = students.find((item) => item.id === transaction.studentId);
               const subject = student
                 ? `${student.firstName} ${student.lastName}`
@@ -2266,6 +2403,15 @@ function Admin({
               );
             })
           )}
+          {sortedTransactions.length > historyPageSize ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4 text-sm text-white/60">
+              <span>Showing {historyPage * historyPageSize + 1}–{Math.min((historyPage + 1) * historyPageSize, sortedTransactions.length)} of {sortedTransactions.length}</span>
+              <div className="flex gap-2">
+                <button className="button-compact disabled:cursor-not-allowed disabled:opacity-40" disabled={historyPage === 0} onClick={() => setHistoryPage((page) => Math.max(0, page - 1))} type="button">Previous</button>
+                <button className="button-compact disabled:cursor-not-allowed disabled:opacity-40" disabled={(historyPage + 1) * historyPageSize >= sortedTransactions.length} onClick={() => setHistoryPage((page) => page + 1)} type="button">Next</button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </Panel>
       </div>

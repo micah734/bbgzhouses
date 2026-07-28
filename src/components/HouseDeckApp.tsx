@@ -1791,7 +1791,7 @@ function Points({
             <div className="mt-3 flex flex-wrap justify-center gap-3">
             {[1, 2, 5, 10].map((amount) => (
               <button
-                className={pointAmount === amount ? "button-primary min-h-12 min-w-20 justify-center py-3 text-center" : "button-secondary min-h-12 min-w-20 justify-center py-3 text-center"}
+                className={pointAmount === amount ? "button-primary point-amount-button" : "button-secondary point-amount-button"}
                 disabled={isAwardingPoints}
                 key={amount}
                 onClick={() => setPointAmount(amount)}

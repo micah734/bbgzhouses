@@ -144,6 +144,7 @@ export function HouseDeckApp() {
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
   const [isAwardingPoints, setIsAwardingPoints] = useState(false);
@@ -355,11 +356,16 @@ export function HouseDeckApp() {
     }
 
     try {
+      setIsResettingPassword(true);
+      setAuthNotice("Sending reset request…");
       await requestPasswordReset(authEmail.trim());
       setAuthNotice("Request received. If an account uses this email, a password reset link has been sent.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Password reset request failed.";
       setAuthError(message);
+      setAuthNotice("");
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -713,6 +719,7 @@ export function HouseDeckApp() {
           authEmail={authEmail}
           authError={authError}
           authNotice={authNotice}
+          isResettingPassword={isResettingPassword}
           authMode={authMode}
           authName={authName}
           authPassword={authPassword}
@@ -1190,6 +1197,7 @@ function LoginScreen({
   authEmail,
   authError,
   authNotice,
+  isResettingPassword,
   authMode,
   authName,
   authPassword,
@@ -1203,6 +1211,7 @@ function LoginScreen({
   authEmail: string;
   authError: string;
   authNotice: string;
+  isResettingPassword: boolean;
   authMode: "sign-in" | "sign-up";
   authName: string;
   authPassword: string;
@@ -1350,8 +1359,8 @@ function LoginScreen({
               {authMode === "sign-in" ? "Sign In" : "Create Account"}
             </button>
             {authMode === "sign-in" ? (
-              <button className="text-sm font-semibold text-yellow-200 underline decoration-yellow-200/40 underline-offset-4" onClick={() => void onResetPassword()} type="button">
-                Forgot password?
+              <button className="text-sm font-semibold text-yellow-200 underline decoration-yellow-200/40 underline-offset-4 disabled:cursor-not-allowed disabled:opacity-60" disabled={isResettingPassword} onClick={() => void onResetPassword()} type="button">
+                {isResettingPassword ? "Sending reset request…" : "Forgot password?"}
               </button>
             ) : null}
           </form>

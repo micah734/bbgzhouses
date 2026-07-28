@@ -27,6 +27,7 @@ import {
   isSupabaseSessionExpiredError,
   loadHouseDeckData,
   resetSupabasePoints,
+  updatePassword,
   requestPasswordReset,
   searchSupabaseStudents,
   signInWithPassword,
@@ -145,6 +146,8 @@ export function HouseDeckApp() {
   const [authError, setAuthError] = useState("");
   const [authNotice, setAuthNotice] = useState("");
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [recoveryToken, setRecoveryToken] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
   const [isAwardingPoints, setIsAwardingPoints] = useState(false);
@@ -231,6 +234,16 @@ export function HouseDeckApp() {
       notify(error instanceof Error ? error.message : "Could not load Supabase data.");
     }
   }, [expireSession, session, supabaseReady]);
+
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = hash.get("access_token");
+    const type = hash.get("type");
+    if (accessToken && type === "recovery") {
+      setRecoveryToken(accessToken);
+      setAuthNotice("Choose a new password for your account.");
+    }
+  }, []);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -366,6 +379,22 @@ export function HouseDeckApp() {
       setAuthNotice("");
     } finally {
       setIsResettingPassword(false);
+    }
+  };
+
+  const handleSetNewPassword = async () => {
+    if (!recoveryToken || newPassword.length < 8) {
+      setAuthError("Your new password must be at least 8 characters.");
+      return;
+    }
+    try {
+      await updatePassword(recoveryToken, newPassword);
+      setRecoveryToken(null);
+      setNewPassword("");
+      window.history.replaceState({}, "", window.location.pathname);
+      setAuthNotice("Password updated. You can now sign in.");
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Could not update your password.");
     }
   };
 
@@ -720,15 +749,19 @@ export function HouseDeckApp() {
           authError={authError}
           authNotice={authNotice}
           isResettingPassword={isResettingPassword}
+          isRecovery={Boolean(recoveryToken)}
+          newPassword={newPassword}
           authMode={authMode}
           authName={authName}
           authPassword={authPassword}
           onAuth={handleAuth}
           onResetPassword={handlePasswordReset}
+          onSetNewPassword={handleSetNewPassword}
           setAuthEmail={setAuthEmail}
           setAuthMode={setAuthMode}
           setAuthName={setAuthName}
           setAuthPassword={setAuthPassword}
+          setNewPassword={setNewPassword}
         />
         <Toast message={toast} />
       </>
@@ -1198,29 +1231,37 @@ function LoginScreen({
   authError,
   authNotice,
   isResettingPassword,
+  isRecovery,
+  newPassword,
   authMode,
   authName,
   authPassword,
   onAuth,
   onResetPassword,
+  onSetNewPassword,
   setAuthEmail,
   setAuthMode,
   setAuthName,
   setAuthPassword,
+  setNewPassword,
 }: {
   authEmail: string;
   authError: string;
   authNotice: string;
   isResettingPassword: boolean;
+  isRecovery: boolean;
+  newPassword: string;
   authMode: "sign-in" | "sign-up";
   authName: string;
   authPassword: string;
   onAuth: (event: FormEvent<HTMLFormElement>) => void;
   onResetPassword: () => void | Promise<void>;
+  onSetNewPassword: () => void | Promise<void>;
   setAuthEmail: (value: string) => void;
   setAuthMode: (value: "sign-in" | "sign-up") => void;
   setAuthName: (value: string) => void;
   setAuthPassword: (value: string) => void;
+  setNewPassword: (value: string) => void;
 }) {
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#030407] text-white">
@@ -1344,25 +1385,33 @@ function LoginScreen({
             />
             </label>
 
-            <label className="grid gap-1 text-sm font-medium">
-              Password
-            <input
-              className="field"
-              onChange={(event) => setAuthPassword(event.target.value)}
-              placeholder="Password"
-              type="password"
-              value={authPassword}
-            />
-            </label>
+            {isRecovery ? (
+              <>
+                <label className="grid gap-1 text-sm font-medium">
+                  New password
+                  <input className="field" minLength={8} onChange={(event) => setNewPassword(event.target.value)} placeholder="At least 8 characters" type="password" value={newPassword} />
+                </label>
+                <button className="button-primary mt-2 justify-center rounded-xl py-3.5" onClick={() => void onSetNewPassword()} type="button">
+                  Set New Password
+                </button>
+              </>
+            ) : (
+              <>
+                <label className="grid gap-1 text-sm font-medium">
+                  Password
+                  <input className="field" onChange={(event) => setAuthPassword(event.target.value)} placeholder="Password" type="password" value={authPassword} />
+                </label>
 
-            <button className="button-primary mt-2 justify-center rounded-xl py-3.5" type="submit">
-              {authMode === "sign-in" ? "Sign In" : "Create Account"}
-            </button>
-            {authMode === "sign-in" ? (
-              <button className="text-sm font-semibold text-yellow-200 underline decoration-yellow-200/40 underline-offset-4 disabled:cursor-not-allowed disabled:opacity-60" disabled={isResettingPassword} onClick={() => void onResetPassword()} type="button">
-                {isResettingPassword ? "Sending reset request…" : "Forgot password?"}
-              </button>
-            ) : null}
+                <button className="button-primary mt-2 justify-center rounded-xl py-3.5" type="submit">
+                  {authMode === "sign-in" ? "Sign In" : "Create Account"}
+                </button>
+                {authMode === "sign-in" ? (
+                  <button className="text-sm font-semibold text-yellow-200 underline decoration-yellow-200/40 underline-offset-4 disabled:cursor-not-allowed disabled:opacity-60" disabled={isResettingPassword} onClick={() => void onResetPassword()} type="button">
+                    {isResettingPassword ? "Sending reset request…" : "Forgot password?"}
+                  </button>
+                ) : null}
+              </>
+            )}
           </form>
 
           <p className="mt-5 text-center text-xs text-white/45">

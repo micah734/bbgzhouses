@@ -142,11 +142,12 @@ export async function signInWithPassword(email: string, password: string) {
 }
 
 export async function requestPasswordReset(email: string) {
+  const origin = typeof window === "undefined" ? undefined : window.location.origin;
+  const redirectTo = origin?.includes("localhost") || origin?.includes("127.0.0.1")
+    ? "https://bbgzhouses.vercel.app"
+    : origin;
   const response = await fetch("/api/auth/password-reset", {
-    body: JSON.stringify({
-      email,
-      redirectTo: typeof window === "undefined" ? undefined : window.location.origin,
-    }),
+    body: JSON.stringify({ email, redirectTo }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
   });
@@ -155,6 +156,15 @@ export async function requestPasswordReset(email: string) {
     const payload = await readJsonResponse<{ error?: string; error_description?: string; msg?: string }>(response);
     throw new Error(payload.error || payload.error_description || payload.msg || "Password reset request failed.");
   }
+}
+
+export async function updatePassword(accessToken: string, password: string) {
+  const response = await supabaseFetch("/auth/v1/user", {
+    body: JSON.stringify({ password }),
+    headers: { Authorization: `Bearer ${accessToken}` },
+    method: "PUT",
+  });
+  return (await response.json()) as SupabaseUser;
 }
 
 export async function signUpWithPassword(email: string, password: string, fullName: string) {

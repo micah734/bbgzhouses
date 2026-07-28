@@ -109,6 +109,7 @@ textarea:focus-visible {
 .button-compact {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   border-radius: 0.5rem;
   font-weight: 650;
   transition:

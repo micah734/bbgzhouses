@@ -1791,7 +1791,7 @@ function Points({
             <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6">
             {[1, 2, 5, 10].map((amount) => (
               <button
-                className={pointAmount === amount ? "button-primary min-h-12 justify-center py-3" : "button-secondary min-h-12 justify-center py-3"}
+                className={pointAmount === amount ? "button-primary w-full min-h-12 justify-center py-3 text-center" : "button-secondary w-full min-h-12 justify-center py-3 text-center"}
                 disabled={isAwardingPoints}
                 key={amount}
                 onClick={() => setPointAmount(amount)}

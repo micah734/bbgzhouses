@@ -332,7 +332,8 @@ export function HouseDeckApp() {
       await refreshSupabaseData(nextSession);
       notify(authMode === "sign-in" ? "Signed in to Supabase." : "Account created.");
     } catch (error) {
-      notify(error instanceof Error ? error.message : "Authentication failed.");
+      const message = error instanceof Error ? error.message : "Authentication failed.";
+      notify(`Could not ${authMode === "sign-in" ? "sign in" : "create your account"}: ${message}`);
     }
   };
 

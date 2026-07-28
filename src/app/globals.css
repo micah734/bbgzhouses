@@ -73,7 +73,7 @@ textarea:focus-visible {
 }
 
 .scoreboard-ticker {
-  animation: ticker-slide 26s linear infinite;
+  animation: ticker-slide 180s linear infinite;
 }
 
 .scoreboard-ticker:hover {

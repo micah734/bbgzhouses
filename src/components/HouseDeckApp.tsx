@@ -1677,7 +1677,7 @@ function Points({
           <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
             <p className="text-sm font-medium text-white/55">Point amount</p>
             <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-6">
-            {[1, 2, 5, 10, -1, -5].map((amount) => (
+            {[1, 2, 5, 10].map((amount) => (
               <button
                 className={pointAmount === amount ? "button-primary min-h-12 justify-center py-3" : "button-secondary min-h-12 justify-center py-3"}
                 disabled={isAwardingPoints}
@@ -1809,7 +1809,7 @@ function Scoreboard({
                 One Pride. One School. One Lion.
               </p>
               <h1 className="truncate text-3xl font-semibold tracking-tight sm:text-4xl xl:text-5xl">
-                House Scoreboard
+                Pride Points
               </h1>
             </div>
           </div>

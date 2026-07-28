@@ -141,6 +141,7 @@ export function HouseDeckApp() {
   const [authPassword, setAuthPassword] = useState("");
   const [authName, setAuthName] = useState("");
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [authError, setAuthError] = useState("");
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
   const [isAwardingPoints, setIsAwardingPoints] = useState(false);
@@ -314,8 +315,11 @@ export function HouseDeckApp() {
 
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setAuthError("");
     if (!supabaseReady) {
-      notify("Add Supabase URL and anon key to .env.local first.");
+      const message = "Add Supabase URL and anon key to .env.local first.";
+      setAuthError(message);
+      notify(`Could not authenticate: ${message}`);
       return;
     }
 
@@ -333,6 +337,7 @@ export function HouseDeckApp() {
       notify(authMode === "sign-in" ? "Signed in to Supabase." : "Account created.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Authentication failed.";
+      setAuthError(message);
       notify(`Could not ${authMode === "sign-in" ? "sign in" : "create your account"}: ${message}`);
     }
   };
@@ -685,6 +690,7 @@ export function HouseDeckApp() {
       <>
         <LoginScreen
           authEmail={authEmail}
+          authError={authError}
           authMode={authMode}
           authName={authName}
           authPassword={authPassword}
@@ -1159,6 +1165,7 @@ function Dashboard({
 
 function LoginScreen({
   authEmail,
+  authError,
   authMode,
   authName,
   authPassword,
@@ -1169,6 +1176,7 @@ function LoginScreen({
   setAuthPassword,
 }: {
   authEmail: string;
+  authError: string;
   authMode: "sign-in" | "sign-up";
   authName: string;
   authPassword: string;
@@ -1262,9 +1270,16 @@ function LoginScreen({
               >
                 Create
               </button>
-            </div>
+          </div>
 
-            {authMode === "sign-up" ? (
+          {authError ? (
+            <div aria-live="assertive" className="mt-4 rounded-xl border border-red-400/35 bg-red-500/12 p-3 text-sm text-red-100" role="alert">
+              <p className="font-semibold">Account action failed</p>
+              <p className="mt-1 text-red-100/80">{authError}</p>
+            </div>
+          ) : null}
+
+          {authMode === "sign-up" ? (
               <label className="grid gap-1 text-sm font-medium">
                 Full name
                 <input

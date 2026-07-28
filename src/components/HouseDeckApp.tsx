@@ -444,7 +444,7 @@ export function HouseDeckApp() {
 
   const importStudents = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const imported = parseStudentsCsv(csvDraft, students.length);
+    const imported = parseStudentsCsv(csvDraft, students);
     if (imported.length === 0) {
       notify("Paste CSV rows with first name, last name, grade, and optional family ID.");
       return;
@@ -550,38 +550,18 @@ export function HouseDeckApp() {
   };
 
   const addAssignmentNames = () => {
-    const names = assignmentNames
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+    const rows = assignmentNames.split("\n").map((line) => line.trim()).filter(Boolean);
 
-    if (names.length === 0) {
-      notify("Paste at least one student name.");
+    if (rows.length === 0) {
+      notify("Paste at least one student row.");
       return;
     }
 
-    const assigned = names.map((name, index) => {
-      const [firstName = "Student", ...rest] = name.split(/\s+/);
-      const lastName = rest.join(" ") || "New";
-      const draftStudents = names.slice(0, index).map((_, idx) => ({
-        id: `draft-${idx}`,
-        firstName: "Draft",
-        lastName: "Student",
-        grade: 0,
-        house: houses[idx % houses.length],
-        points: 0,
-      })) satisfies Student[];
-      const house = pickBalancedHouse([...students, ...draftStudents]);
-
-      return {
-        id: `stu-${Date.now()}-${index}`,
-        firstName,
-        lastName,
-        grade: 0,
-        house,
-        points: 0,
-      } satisfies Student;
+    const candidates = rows.map((row, index) => {
+      const [firstName = "Student", lastName = "New", grade = "0", familyId = ""] = row.split(",").map((cell) => cell.trim());
+      return { id: `stu-${Date.now()}-${index}`, firstName, lastName, grade: Number(grade) || 0, familyId: familyId || undefined, house: "Red" as HouseName, points: 0 };
     });
+    const assigned = assignStudentsToHouses(candidates, students);
 
     setStudents((current) => [...assigned, ...current]);
     setAssignmentNames("");
@@ -1767,8 +1747,8 @@ function Assignment({
             <Metric label="Unassigned" note="Current sample" value="0" />
           </div>
           <label className="grid gap-1 text-sm font-medium">
-            Paste names
-            <textarea className="field min-h-44" onChange={(event) => setAssignmentNames(event.target.value)} placeholder={"Alice Johnson\nBob Smith\nCharlie Brown"} value={assignmentNames} />
+            Paste rows: first name, last name, grade, family ID
+            <textarea className="field min-h-44" onChange={(event) => setAssignmentNames(event.target.value)} placeholder={"Alice,Johnson,5,FAM001\nBob,Smith,7,FAM002\nCharlie,Brown,3,FAM001"} value={assignmentNames} />
           </label>
           <div className="flex flex-wrap gap-2">
             <button className="button-primary" onClick={onGenerate} type="button">Generate Assignment</button>
@@ -2860,22 +2840,53 @@ function getHouseTotals(sourceStudents: Student[], sourceTransactions: Transacti
     .sort((a, b) => b.points - a.points);
 }
 
-function pickBalancedHouse(sourceStudents: Student[]): HouseName {
-  const totals = houses.map((house) => ({
-    house,
-    count: sourceStudents.filter((student) => student.house === house).length,
-  }));
-  return [...totals].sort((a, b) => a.count - b.count)[0].house;
+function assignStudentsToHouses(candidates: Student[], existing: Student[]): Student[] {
+  const familyHouses = new Map<string, HouseName>();
+  for (const student of existing) {
+    if (student.familyId && !familyHouses.has(student.familyId)) familyHouses.set(student.familyId, student.house);
+  }
+  const totals = new Map(houses.map((house) => [house, { total: 0, upper: 0, lower: 0 }]));
+  for (const student of existing) {
+    const bucket = totals.get(student.house)!;
+    bucket.total += 1;
+    if (student.grade >= 6 && student.grade <= 9) bucket.upper += 1;
+    else if (student.grade >= 1 && student.grade <= 5) bucket.lower += 1;
+  }
+  const groups = [...Map.groupBy(candidates, (student) => student.familyId || student.id).entries()]
+    .sort((a, b) => b[1].length - a[1].length || Math.random() - 0.5);
+  for (const [familyId, group] of groups) {
+    const fixedHouse = familyHouses.get(familyId);
+    const choices = fixedHouse ? [fixedHouse] : [...houses].sort(() => Math.random() - 0.5);
+    const chosen = choices.sort((a, b) => assignmentScore(totals, a, group) - assignmentScore(totals, b, group))[0];
+    for (const student of group) {
+      student.house = chosen;
+      const bucket = totals.get(chosen)!;
+      bucket.total += 1;
+      if (student.grade >= 6 && student.grade <= 9) bucket.upper += 1;
+      else if (student.grade >= 1 && student.grade <= 5) bucket.lower += 1;
+    }
+  }
+  return candidates;
 }
 
-function parseStudentsCsv(csv: string, currentCount: number): Student[] {
+function assignmentScore(totals: Map<HouseName, { total: number; upper: number; lower: number }>, house: HouseName, group: Student[]) {
+  const projected = new Map([...totals].map(([name, value]) => [name, { ...value }]));
+  const bucket = projected.get(house)!;
+  bucket.total += group.length;
+  bucket.upper += group.filter((student) => student.grade >= 6 && student.grade <= 9).length;
+  bucket.lower += group.filter((student) => student.grade >= 1 && student.grade <= 5).length;
+  const totalsByBand = [...projected.values()].reduce((sum, value) => ({ total: sum.total + value.total, upper: sum.upper + value.upper, lower: sum.lower + value.lower }), { total: 0, upper: 0, lower: 0 });
+  return [...projected.values()].reduce((score, value) => score + (value.total - totalsByBand.total / houses.length) ** 2 + 2 * (value.upper - totalsByBand.upper / houses.length) ** 2 + 2 * (value.lower - totalsByBand.lower / houses.length) ** 2, 0);
+}
+
+function parseStudentsCsv(csv: string, existing: Student[]): Student[] {
   const rows = csv
     .split("\n")
     .map((row) => row.trim())
     .filter(Boolean)
     .filter((row, index) => !(index === 0 && row.toLowerCase().includes("first")));
 
-  return rows.flatMap((row, index) => {
+  const candidates = rows.flatMap((row, index) => {
     const [firstName, lastName, grade, familyId] = row.split(",").map((cell) => cell.trim());
     if (!firstName || !lastName) return [];
     return [{
@@ -2884,10 +2895,11 @@ function parseStudentsCsv(csv: string, currentCount: number): Student[] {
       lastName,
       grade: Number(grade) || 0,
       familyId: familyId || undefined,
-      house: houses[(currentCount + index) % houses.length],
+      house: "Red" as HouseName,
       points: 0,
     }];
   });
+  return assignStudentsToHouses(candidates, existing);
 }
 
 function studentsToCsv(students: Student[]) {

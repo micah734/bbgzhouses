@@ -27,6 +27,7 @@ import {
   isSupabaseSessionExpiredError,
   loadHouseDeckData,
   resetSupabasePoints,
+  requestPasswordReset,
   searchSupabaseStudents,
   signInWithPassword,
   signUpWithPassword,
@@ -142,6 +143,7 @@ export function HouseDeckApp() {
   const [authName, setAuthName] = useState("");
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [authError, setAuthError] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
   const [dataSource, setDataSource] = useState<"sample" | "supabase">("sample");
   const [supabaseReady, setSupabaseReady] = useState(false);
   const [isAwardingPoints, setIsAwardingPoints] = useState(false);
@@ -316,6 +318,7 @@ export function HouseDeckApp() {
   const handleAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAuthError("");
+    setAuthNotice("");
     if (!supabaseReady) {
       const message = "Add Supabase URL and anon key to .env.local first.";
       setAuthError(message);
@@ -339,6 +342,24 @@ export function HouseDeckApp() {
       const message = error instanceof Error ? error.message : "Authentication failed.";
       setAuthError(message);
       notify(`Could not ${authMode === "sign-in" ? "sign in" : "create your account"}: ${message}`);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    setAuthError("");
+    setAuthNotice("");
+
+    if (!authEmail.trim()) {
+      setAuthError("Enter your email address first, then choose Forgot password.");
+      return;
+    }
+
+    try {
+      await requestPasswordReset(authEmail.trim());
+      setAuthNotice("If an account uses this email, a password reset link has been sent.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Password reset request failed.";
+      setAuthError(message);
     }
   };
 
@@ -691,10 +712,12 @@ export function HouseDeckApp() {
         <LoginScreen
           authEmail={authEmail}
           authError={authError}
+          authNotice={authNotice}
           authMode={authMode}
           authName={authName}
           authPassword={authPassword}
           onAuth={handleAuth}
+          onResetPassword={handlePasswordReset}
           setAuthEmail={setAuthEmail}
           setAuthMode={setAuthMode}
           setAuthName={setAuthName}
@@ -1166,10 +1189,12 @@ function Dashboard({
 function LoginScreen({
   authEmail,
   authError,
+  authNotice,
   authMode,
   authName,
   authPassword,
   onAuth,
+  onResetPassword,
   setAuthEmail,
   setAuthMode,
   setAuthName,
@@ -1177,10 +1202,12 @@ function LoginScreen({
 }: {
   authEmail: string;
   authError: string;
+  authNotice: string;
   authMode: "sign-in" | "sign-up";
   authName: string;
   authPassword: string;
   onAuth: (event: FormEvent<HTMLFormElement>) => void;
+  onResetPassword: () => void | Promise<void>;
   setAuthEmail: (value: string) => void;
   setAuthMode: (value: "sign-in" | "sign-up") => void;
   setAuthName: (value: string) => void;
@@ -1279,6 +1306,12 @@ function LoginScreen({
             </div>
           ) : null}
 
+          {authNotice ? (
+            <div aria-live="polite" className="mt-4 rounded-xl border border-emerald-400/35 bg-emerald-500/12 p-3 text-sm text-emerald-100" role="status">
+              {authNotice}
+            </div>
+          ) : null}
+
           {authMode === "sign-up" ? (
               <label className="grid gap-1 text-sm font-medium">
                 Full name
@@ -1316,6 +1349,11 @@ function LoginScreen({
             <button className="button-primary mt-2 justify-center rounded-xl py-3.5" type="submit">
               {authMode === "sign-in" ? "Sign In" : "Create Account"}
             </button>
+            {authMode === "sign-in" ? (
+              <button className="text-sm font-semibold text-yellow-200 underline decoration-yellow-200/40 underline-offset-4" onClick={() => void onResetPassword()} type="button">
+                Forgot password?
+              </button>
+            ) : null}
           </form>
 
           <p className="mt-5 text-center text-xs text-white/45">

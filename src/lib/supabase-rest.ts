@@ -141,6 +141,21 @@ export async function signInWithPassword(email: string, password: string) {
   return payload as SupabaseSession;
 }
 
+export async function requestPasswordReset(email: string) {
+  const response = await supabaseFetch("/auth/v1/recover", {
+    body: JSON.stringify({
+      email,
+      redirect_to: typeof window === "undefined" ? undefined : window.location.origin,
+    }),
+    method: "POST",
+  });
+  const payload = await readJsonResponse<{ error_description?: string; msg?: string }>(response);
+
+  if (!response.ok) {
+    throw new Error(payload.error_description || payload.msg || "Password reset request failed.");
+  }
+}
+
 export async function signUpWithPassword(email: string, password: string, fullName: string) {
   const response = await fetch("/api/auth/signup", {
     body: JSON.stringify({

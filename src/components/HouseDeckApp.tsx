@@ -1788,10 +1788,10 @@ function Points({
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.04] p-4">
             <p className="text-sm font-medium text-white/55">Point amount</p>
-            <div className="mt-3 flex flex-wrap justify-center gap-3">
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[1, 2, 5, 10].map((amount) => (
               <button
-                className={pointAmount === amount ? "button-primary point-amount-button" : "button-secondary point-amount-button"}
+                className={`point-amount-button ${pointAmount === amount ? "point-amount-button--selected" : "point-amount-button--unselected"}`}
                 disabled={isAwardingPoints}
                 key={amount}
                 onClick={() => setPointAmount(amount)}

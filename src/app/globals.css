@@ -156,12 +156,22 @@ textarea:focus-visible {
 
 .point-amount-button {
   display: grid;
-  width: 5rem;
+  width: 100%;
   min-height: 3rem;
   place-items: center;
   padding: 0.75rem;
   line-height: 1;
   text-align: center;
+}
+
+.app-main .point-amount-button--selected {
+  background: #ffffff !important;
+  color: #07080c !important;
+}
+
+.app-main .point-amount-button--unselected {
+  background: rgb(255 255 255 / 8%) !important;
+  color: #ffffff !important;
 }
 
 .panel-shell {

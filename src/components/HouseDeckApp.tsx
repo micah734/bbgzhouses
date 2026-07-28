@@ -356,7 +356,7 @@ export function HouseDeckApp() {
 
     try {
       await requestPasswordReset(authEmail.trim());
-      setAuthNotice("If an account uses this email, a password reset link has been sent.");
+      setAuthNotice("Request received. If an account uses this email, a password reset link has been sent.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Password reset request failed.";
       setAuthError(message);

@@ -149,9 +149,9 @@ export async function requestPasswordReset(email: string) {
     }),
     method: "POST",
   });
-  const payload = await readJsonResponse<{ error_description?: string; msg?: string }>(response);
 
   if (!response.ok) {
+    const payload = await readJsonResponse<{ error_description?: string; msg?: string }>(response);
     throw new Error(payload.error_description || payload.msg || "Password reset request failed.");
   }
 }
